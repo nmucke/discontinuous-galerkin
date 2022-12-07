@@ -23,5 +23,5 @@ addopts = [
 ]
 
 [tool.coverage.run]
-source = ["src]
+source = ["src/discontinuous_galerkin"]
 omit = ["*/__init__.py"]
