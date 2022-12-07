@@ -3,10 +3,10 @@ requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [project]
-name = "hello-world-package"
+name = "discontinuous-galerkin"
 version = "0.1.0"
 license = {file = "LICENSE.txt"}
-description = "An exercise in package structure"
+description = "A generic discontinuous galerkin package"
 readme = "README.md"
 requires-python = ">=3.8"
 dependencies = [
@@ -15,7 +15,7 @@ dependencies = [
 ]
 
 [project.urls]
-"Homepage" = "https://github.com/jfhbuist/hello-world-package"
+"Homepage" = "https://github.com/nmucke/discontinuous-galerkin"
 
 [tool.pytest.ini_options]
 addopts = [
@@ -23,5 +23,5 @@ addopts = [
 ]
 
 [tool.coverage.run]
-source = ["hello_world_package"]
+source = ["src]
 omit = ["*/__init__.py"]
