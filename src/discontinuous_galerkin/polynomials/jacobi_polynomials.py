@@ -86,10 +86,3 @@ def GradVandermonde1D(r,alpha,beta,N):
         DVr[:,i:(i+1)] = GradJacobiP(r,alpha,beta,i)
     return DVr
 
-def Dmatrix1D(r,alpha,beta,N,V):
-    """Initialize differentiation matrix"""
-
-    Vr = GradVandermonde1D(r,alpha,beta,N)
-
-    Dr = np.transpose(np.linalg.solve(np.transpose(V),np.transpose(Vr)))
-    return Dr
