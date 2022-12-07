@@ -8,6 +8,7 @@ from discontinuous_galerkin.polynomials.jacobi_polynomials import (
 )
 from scipy import sparse as sps
 import numpy as np
+import pdb
 
 
 def diracDelta(x):
@@ -48,8 +49,8 @@ class StartUp1D():
         self.V = Vandermonde1D(self.r, self.alpha, self.beta,
                                self.N)  # Vandermonde matrix
         self.invV = np.linalg.inv(self.V)  # Inverse Vandermonde matrix
-        self.Dr = Dmatrix1D(self.r, self.alpha, self.beta, self.N,
-                            self.V)  # Differentiation matrix
+        #self.Dr = self.Dmatrix1D(self.r, self.alpha, self.beta, self.N,self.V)  # Differentiation matrix
+        self.Dr = self.Dmatrix1D()  # Differentiation matrix
         #self.M = np.transpose(
         #    np.linalg.solve(np.transpose(self.invV), self.invV))  # Mass matrix
         #self.invM = np.linalg.inv(self.M)  # Inverse mass matrix
@@ -58,17 +59,14 @@ class StartUp1D():
         self.M = np.linalg.inv(self.invM)
 
 
-        self.LIFT = lift1D(self.Np, self.Nfaces, self.Nfp,
-                           self.V)  # Surface integral
+        self.LIFT = self.lift1D()  # Surface integral
 
         # Generate equidistant grid
-        self.Nv, self.VX, self.K, self.EtoV = MeshGen1D(self.xmin, self.xmax,
-                                                        self.K)
+        self.Nv, self.VX, self.K, self.EtoV = self.MeshGen1D()
+        self.EtoV = self.EtoV.astype(int)
 
-        self.va = np.transpose(
-                self.EtoV[:, 0])  # Leftmost grid points in each element
-        self.vb = np.transpose(
-                self.EtoV[:, 1])  # rightmost grid points in each element
+        self.va = np.transpose(self.EtoV[:, 0])  # Leftmost grid points in each element
+        self.vb = np.transpose(self.EtoV[:, 1])  # rightmost grid points in each element
 
         # Global grid
         self.x = np.ones((self.Np, 1)) * self.VX[self.va.astype(int)] + \
@@ -93,9 +91,9 @@ class StartUp1D():
         self.vmapM, self.vmapP, self.vmapB,self.mapB,self.mapI,\
         self.mapO,self.vmapI,self.vmapO = self.BuildMaps1D()
 
-        self.nx = self.Normals1D(self)
+        self.nx = self.Normals1D()
 
-        self.rx, self.J = self.GeometricFactors(self)
+        self.rx, self.J = self.GeometricFactors()
 
         self.Fscale = 1./(self.J[self.Fmask,:])
 
@@ -155,7 +153,7 @@ class StartUp1D():
         Nv = self.K + 1
 
         vn = [0, 1]
-
+        
         SpFToV = sps.lil_matrix((TotalFaces, Nv))
 
         sk = 0
@@ -194,7 +192,7 @@ class StartUp1D():
     def MeshGen1D(self):
         """Generate equidistant grid"""
 
-        Nv = K+1
+        Nv = self.K+1
 
         VX = np.arange(1.,Nv+1.)
 
@@ -208,21 +206,21 @@ class StartUp1D():
 
         return Nv, VX, self.K, EtoV
     
-    def lift1D(Np,Nfaces,Nfp,V):
+    def lift1D(self):
         """Compute surface integral term of DG formulation"""
 
-        Emat = np.zeros((Np,Nfaces*Nfp))
+        Emat = np.zeros((self.Np,self.Nfaces*self.Nfp))
         Emat[0,0] = 1
-        Emat[Np-1,1] = 1
-        LIFT = np.dot(V,np.dot(np.transpose(V),Emat))
+        Emat[self.Np-1,1] = 1
+        LIFT = np.dot(self.V,np.dot(np.transpose(self.V),Emat))
         return LIFT
 
-    def Dmatrix1D(r,alpha,beta,N,V):
+    def Dmatrix1D(self):
         """Initialize differentiation matrix"""
 
-        Vr = GradVandermonde1D(r,alpha,beta,N)
+        Vr = GradVandermonde1D(self.r,self.alpha,self.beta,self.N)
 
-        Dr = np.transpose(np.linalg.solve(np.transpose(V),np.transpose(Vr)))
+        Dr = np.transpose(np.linalg.solve(np.transpose(self.V),np.transpose(Vr)))
         return Dr
 
     def identity(self,x,num_states=1):
