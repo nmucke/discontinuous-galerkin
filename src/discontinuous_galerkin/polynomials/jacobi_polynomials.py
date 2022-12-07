@@ -1,7 +1,6 @@
 import numpy as np
 from scipy.special import gamma
 import scipy.special as sci
-import scipy.sparse as sps
 
 def JacobiP(x, alpha, beta, N):
     """Evaluate jacobi polynomials at x"""

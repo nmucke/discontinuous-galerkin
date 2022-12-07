@@ -1,0 +1,89 @@
+import numpy as np
+
+
+
+    def minmod(self,v):
+        """Minmod function"""
+
+        m = v.shape[0]
+        mfunc = np.zeros((v.shape[1],))
+        s = np.sum(np.sign(v),0)/m
+
+        ids = np.argwhere(np.abs(s)==1)
+
+        if ids.shape[0]!=0:
+            mfunc[ids] = s[ids] * np.min(np.abs(v[:,ids]),0)
+
+        return mfunc
+
+    def minmodB(self,v,M,h):
+        """ Implement the TVB modified minmod function"""
+
+        mfunc = v[0,:]
+        ids = np.argwhere(np.abs(mfunc) > M*h*h)
+
+        if np.shape(ids)[0]>0:
+            mfunc[ids[:,0]] = self.minmod(v[:,ids[:,0]])
+
+        return mfunc
+
+    def SlopeLimitLin(self,ul,xl,vm1,v0,vp1):
+        """ Apply slopelimited on linear function ul(Np,1) on x(Np,1)
+            (vm1,v0,vp1) are cell averages left, center, and right"""
+
+        ulimit = ul
+        h = xl[self.Np-1,:]-xl[0,:]
+
+        x0 = np.ones((self.Np,1))*(xl[0,:]+h/2)
+
+        hN = np.ones((self.Np,1))*h
+
+        ux = (2/hN) * np.dot(self.Dr,ul)
+
+        ulimit = np.ones((self.Np,1))*v0 + (xl-x0)*(self.minmodB(np.stack((ux[0,:],
+            np.divide((vp1-v0),h),np.divide((v0-vm1),h)),axis=0),M=1e-5,h=self.deltax))
+
+        return ulimit
+
+    def SlopeLimitN(self,u):
+        """Apply slopelimiter (Pi^N) to u assuming u an N'th order polynomial"""
+
+        uh = np.dot(self.invV,u)
+        uh[1:self.Np,:] = 0
+        uavg = np.dot(self.V,uh)
+        v = uavg[0:1,:]
+
+        ulimit = u
+        eps0 = 1e-8
+
+        ue1 = u[0,:]
+        ue2 = u[-1:,:]
+
+        vk = v
+        vkm1 = np.concatenate((v[0,0:1],v[0,0:self.K-1]),axis=0)
+        vkp1 = np.concatenate((v[0,1:self.K],v[0,(self.K-1):(self.K)]))
+
+        ve1 = vk - self.minmod(np.concatenate((vk-ue1,vk-vkm1,vkp1-vk)))
+        ve2 = vk + self.minmod(np.concatenate((ue2-vk,vk-vkm1,vkp1-vk)))
+
+        ids = np.argwhere((np.abs(ve1-ue1)>eps0) | (np.abs(ve2-ue2)>eps0))[:,1]
+        if ids.shape[0] != 0:
+
+            uhl = np.dot(self.invV,u[:,ids])
+            uhl[2:(self.Np+1),:] = 0
+            ul = np.dot(self.V,uhl)
+
+            ulimit[:,ids] = DG_1D.SlopeLimitLin(self, ul,self.x[:,ids],vkm1[ids],
+                                                vk[0,ids],vkp1[ids])
+
+        return ulimit
+
+    def apply_slopelimitN(self,q,num_states):
+
+        states = []
+        for i in range(num_states):
+            states.append(self.SlopeLimitN(np.reshape(
+                            q[(i*(self.Np*self.K)):((i+1)*(self.Np*self.K))],
+                             (self.Np,self.K),'F')).flatten('F'))
+
+        return np.asarray(states).flatten()
