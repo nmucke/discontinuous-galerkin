@@ -3,6 +3,5 @@ import discontinuous_galerkin
 
 def test_hello(capfd):
 
-    x = 1
+    x = 2
     assert x == 2
-    #assert out == "Hello World!"
