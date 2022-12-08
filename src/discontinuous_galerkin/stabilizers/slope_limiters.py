@@ -1,26 +1,28 @@
 import numpy as np
 from discontinuous_galerkin.stabilizers.base_stabilizer import BaseStabilizer
-
+import pdb
 
 class GeneralizedSlopeLimiter(BaseStabilizer):
     """
     Slope limiter class.
-    
+
     This class implements the generalized slope limiter for the discontinuous
     Galerkin method. The generalized slope limiter is a TVB modified minmod
     function. The TVB modified minmod function is a minmod function with a
     second derivative upper bound. The second derivative upper bound is used
     to prevent the slope limiter from becoming too steep. The slope limiter
     is used to prevent the discontinuous Galerkin method from becoming
-    unstable.    
+    unstable.  
     """
 
     def __init__(
         self, 
+        x,
         polynomial_order, 
         num_elements, 
         vandermonde_matrix,
         delta_x,
+        num_states,
         inverse_vandermonde_matrix,
         differentiation_matrix,
         second_derivative_upper_bound=1e-5,
@@ -33,15 +35,23 @@ class GeneralizedSlopeLimiter(BaseStabilizer):
             num_polynomials=polynomial_order+1,
             vandermonde_matrix=vandermonde_matrix,
             inverse_vandermonde_matrix=inverse_vandermonde_matrix,
-            delta_x=delta_x,
+            num_states=num_states,
+            x=x,
         )
 
+        self.delta_x = delta_x
         self.Dr = differentiation_matrix
         self.M = second_derivative_upper_bound
 
 
-    def minmod(v):
-        """ Minmod function """
+    def minmod(self, v):
+        """ Minmod function 
+
+        v: numpy.ndarray - the array to apply the minmod function to
+
+        returns: numpy.ndarray - the minmod function applied to v
+        
+        """
 
         m = v.shape[0]
         mfunc = np.zeros((v.shape[1],))
@@ -55,7 +65,12 @@ class GeneralizedSlopeLimiter(BaseStabilizer):
         return mfunc
 
     def minmodB(self, v):
-        """ Implement the TVB modified minmod function"""
+        """ Implement the TVB modified minmod function
+
+        v: numpy.ndarray - the array to apply the minmod function to
+
+        returns: numpy.ndarray - the minmod function applied to v
+        """
 
         mfunc = v[0,:]
         ids = np.argwhere(np.abs(mfunc) > self.M*self.delta_x*self.delta_x)
@@ -113,15 +128,15 @@ class GeneralizedSlopeLimiter(BaseStabilizer):
             uhl[2:(self.Np+1),:] = 0
             ul = np.dot(self.V,uhl)
 
-            ulimit[:,ids] = self.SlopeLimitLin(self, ul,self.x[:,ids],vkm1[ids],
+            ulimit[:,ids] = self.SlopeLimitLin(ul,self.x[:,ids],vkm1[ids],
                                                 vk[0,ids],vkp1[ids])
 
         return ulimit
 
-    def apply_stabilizer(self, q, num_states):
+    def apply_stabilizer(self, q):
 
         states = []
-        for i in range(num_states):
+        for i in range(self.num_states):
             states.append(self.SlopeLimitN(np.reshape(
                             q[(i*(self.Np*self.K)):((i+1)*(self.Np*self.K))],
                                 (self.Np,self.K),'F')).flatten('F'))
