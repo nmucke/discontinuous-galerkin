@@ -1,5 +1,7 @@
 import numpy as np
 from discontinuous_galerkin.start_up_routines.start_up_1D import StartUp1D
+from discontinuous_galerkin.stabilizers.slope_limiters import GeneralizedSlopeLimiter
+from discontinuous_galerkin.stabilizers.filters import ExponentialFilter1D
 import pdb
 
 class BaseModel(StartUp1D):
@@ -13,28 +15,60 @@ class BaseModel(StartUp1D):
         self, 
         xmin=0.,
         xmax=1.,
-        K=10,
-        N=5,
+        num_elements=10,
+        polynomial_order=5,
         poly_type='legendre',
         stabilizer=None, 
+        stabilizer_params=None,
         time_stepper='ImplicitEuler'
         ):
         super(BaseModel, self).__init__(
             xmin=xmin,
             xmax=xmax,
-            K=K,
-            N=N,
+            K=num_elements,
+            N=polynomial_order,
             poly=poly_type
         )
         self.xmin = xmin
         self.xmax = xmax
-        self.K = K
-        self.N = N
+        self.K = num_elements
+        self.N = polynomial_order
         self.poly_type = poly_type
         self.Np = N + 1
 
-        self.stabilizer = stabilizer
+        if stabilizer_params is not None:
+            self.stabilizer_params = stabilizer_params
+            self.set_up_stabilizer(stabilizer)
+
         self.time_stepper = time_stepper
+
+    def set_up_stabilizer(self, stabilizer):
+
+        base_stabilizer_params = {
+            'polynomial_order': self.N,
+            'num_elements': self.K,
+            'delta_x': self.deltax,
+            'num_polynomials': self.Np,
+            'vandermonde_matrix': self.V,
+            'inverse_vandermonde_matrix': self.invV,
+        }
+
+        if stabilizer == 'slope_limiter':
+            self.stabilizer_type = 'slope_limiter'
+
+            self.stabilizer = GeneralizedSlopeLimiter(
+                **base_stabilizer_params,
+                **self.stabilizer_params
+            )
+        elif stabilizer == 'filter':
+            self.stabilizer_type = 'filter'
+
+            self.stabilizer = ExponentialFilter1D(
+                **base_stabilizer_params,
+                **self.stabilizer_params
+            )
+        
+        self.apply_stabilizer = self.stabilizer.apply_stabilizer
 
     def __str__(self):
         """ Description of the model. """
@@ -45,7 +79,7 @@ class BaseModel(StartUp1D):
         output += f"Number of elements: {self.K} \n"
         output += f"Polynomial order: {self.N} \n"
         output += f"Polynomial type: {self.poly_type} \n"
-        output += f"Stabilizer: {self.stabilizer} \n"
+        output += f"Stabilizer: {self.stabilizer_type} \n"
         output += f"Time stepping: {self.time_stepper} \n"
         
         return output

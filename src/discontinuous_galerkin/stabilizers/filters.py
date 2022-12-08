@@ -1,7 +1,17 @@
 import numpy as np
 
 class ExponentialFilter1D(object):
-    """Exponential filter for 1D problems"""
+    """Exponential filter for 1D problems
+    
+    This class implements an exponential filter for 1D problems. The filter is
+    used to filter out high frequency modes in the solution. The filter is
+    applied to the state vector, which is a vector of the solution at all
+    polynomial nodes in all elements. The filter is applied to each state
+    variable separately. The filter is applied to the state vector in the
+    following way:
+
+    qf = V*diag(filterdiag)*invV*q
+    """
 
     def __init__(
         self,
@@ -40,7 +50,7 @@ class ExponentialFilter1D(object):
 
         self.filterMat = np.dot(self.V,np.dot(np.diag(filterdiag),self.invV))
 
-    def apply_filter(self,q,num_states):
+    def apply_stabilizer(self, q, num_states):
         """Apply filter to state vector"""
 
         states = []

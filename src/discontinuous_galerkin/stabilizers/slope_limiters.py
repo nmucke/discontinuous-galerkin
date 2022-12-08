@@ -1,7 +1,8 @@
 import numpy as np
+from discontinuous_galerkin.stabilizers.base_stabilizer import BaseStabilizer
 
 
-class GeneralizedSlopeLimiter():
+class GeneralizedSlopeLimiter(BaseStabilizer):
     """
     Slope limiter class.
     
@@ -19,21 +20,24 @@ class GeneralizedSlopeLimiter():
         polynomial_order, 
         num_elements, 
         vandermonde_matrix,
+        delta_x,
         inverse_vandermonde_matrix,
         differentiation_matrix,
-        delta_x,
         second_derivative_upper_bound=1e-5,
         ):
         """Initialize slope limiter class"""
 
-        self.Np = polynomial_order
-        self.K = num_elements
+        super(GeneralizedSlopeLimiter, self).__init__(
+            polynomial_order=polynomial_order,
+            num_elements=num_elements,
+            num_polynomials=polynomial_order+1,
+            vandermonde_matrix=vandermonde_matrix,
+            inverse_vandermonde_matrix=inverse_vandermonde_matrix,
+            delta_x=delta_x,
+        )
+
         self.Dr = differentiation_matrix
         self.M = second_derivative_upper_bound
-        self.h = delta_x
-
-        self.V = vandermonde_matrix
-        self.invV = inverse_vandermonde_matrix
 
 
     def minmod(v):
@@ -54,7 +58,7 @@ class GeneralizedSlopeLimiter():
         """ Implement the TVB modified minmod function"""
 
         mfunc = v[0,:]
-        ids = np.argwhere(np.abs(mfunc) > self.M*self.h*self.h)
+        ids = np.argwhere(np.abs(mfunc) > self.M*self.delta_x*self.delta_x)
 
         if np.shape(ids)[0]>0:
             mfunc[ids[:,0]] = self.minmod(v[:,ids[:,0]])
@@ -114,7 +118,7 @@ class GeneralizedSlopeLimiter():
 
         return ulimit
 
-    def apply_slopelimitN(self,q,num_states):
+    def apply_stabilizer(self, q, num_states):
 
         states = []
         for i in range(num_states):
