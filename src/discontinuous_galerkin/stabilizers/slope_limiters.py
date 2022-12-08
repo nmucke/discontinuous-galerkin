@@ -1,9 +1,43 @@
 import numpy as np
 
 
+class GeneralizedSlopeLimiter():
+    """
+    Slope limiter class.
+    
+    This class implements the generalized slope limiter for the discontinuous
+    Galerkin method. The generalized slope limiter is a TVB modified minmod
+    function. The TVB modified minmod function is a minmod function with a
+    second derivative upper bound. The second derivative upper bound is used
+    to prevent the slope limiter from becoming too steep. The slope limiter
+    is used to prevent the discontinuous Galerkin method from becoming
+    unstable.    
+    """
 
-    def minmod(self,v):
-        """Minmod function"""
+    def __init__(
+        self, 
+        polynomial_order, 
+        num_elements, 
+        vandermonde_matrix,
+        inverse_vandermonde_matrix,
+        differentiation_matrix,
+        delta_x,
+        second_derivative_upper_bound=1e-5,
+        ):
+        """Initialize slope limiter class"""
+
+        self.Np = polynomial_order
+        self.K = num_elements
+        self.Dr = differentiation_matrix
+        self.M = second_derivative_upper_bound
+        self.h = delta_x
+
+        self.V = vandermonde_matrix
+        self.invV = inverse_vandermonde_matrix
+
+
+    def minmod(v):
+        """ Minmod function """
 
         m = v.shape[0]
         mfunc = np.zeros((v.shape[1],))
@@ -16,11 +50,11 @@ import numpy as np
 
         return mfunc
 
-    def minmodB(self,v,M,h):
+    def minmodB(self, v):
         """ Implement the TVB modified minmod function"""
 
         mfunc = v[0,:]
-        ids = np.argwhere(np.abs(mfunc) > M*h*h)
+        ids = np.argwhere(np.abs(mfunc) > self.M*self.h*self.h)
 
         if np.shape(ids)[0]>0:
             mfunc[ids[:,0]] = self.minmod(v[:,ids[:,0]])
@@ -40,13 +74,15 @@ import numpy as np
 
         ux = (2/hN) * np.dot(self.Dr,ul)
 
-        ulimit = np.ones((self.Np,1))*v0 + (xl-x0)*(self.minmodB(np.stack((ux[0,:],
-            np.divide((vp1-v0),h),np.divide((v0-vm1),h)),axis=0),M=1e-5,h=self.deltax))
+        ulimit = np.ones((self.Np,1))*v0 + (xl-x0)*\
+            self.minmodB(
+                np.stack((ux[0,:],np.divide((vp1-v0),h),np.divide((v0-vm1),h)), axis=0)
+                )
 
         return ulimit
 
-    def SlopeLimitN(self,u):
-        """Apply slopelimiter (Pi^N) to u assuming u an N'th order polynomial"""
+    def SlopeLimitN(self, u):
+        """ Apply slopelimiter (Pi^N) to u assuming u an N'th order polynomial """
 
         uh = np.dot(self.invV,u)
         uh[1:self.Np,:] = 0
@@ -73,7 +109,7 @@ import numpy as np
             uhl[2:(self.Np+1),:] = 0
             ul = np.dot(self.V,uhl)
 
-            ulimit[:,ids] = DG_1D.SlopeLimitLin(self, ul,self.x[:,ids],vkm1[ids],
+            ulimit[:,ids] = self.SlopeLimitLin(self, ul,self.x[:,ids],vkm1[ids],
                                                 vk[0,ids],vkp1[ids])
 
         return ulimit
@@ -84,6 +120,6 @@ import numpy as np
         for i in range(num_states):
             states.append(self.SlopeLimitN(np.reshape(
                             q[(i*(self.Np*self.K)):((i+1)*(self.Np*self.K))],
-                             (self.Np,self.K),'F')).flatten('F'))
+                                (self.Np,self.K),'F')).flatten('F'))
 
         return np.asarray(states).flatten()
