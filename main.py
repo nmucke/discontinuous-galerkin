@@ -39,10 +39,10 @@ class AdvectionEquation(BaseModel):
 
         return np.sin(x)
     
-    def boundary_conditions(self, q):
+    def boundary_conditions(self, t):
         """Compute the boundary conditions."""
 
-        return q
+        return -np.sin(2 * np.pi * t)
         
     def flux(self, q):
         """Compute the flux."""

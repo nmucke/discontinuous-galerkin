@@ -109,24 +109,7 @@ class BaseModel():
         raise NotImplementedError
 
     def compute_rhs(self, q):
-        """Compute the right hand side of the model."""
-
-        # Compute the flux
-        flux = self.flux(q)
-
-        # Compute the source term
-        source = self.source(q)
-
-        # Compute the right hand side
-        rhs = -self.variables.Dr @ flux + source
-
-        return rhs
-
-    def solve(self, q):
-        """Solve the model.
-
-        This method solves the model and returns the solution.
-        """
+        """Compute the right hand side of the discretized model."""
 
         # Compute the flux
         flux = self.flux(q)
@@ -151,6 +134,17 @@ class BaseModel():
         rhs = self.variables.Dr @ flux \
             - self.variables.LIFT @ (self.variables.Fscale * numerical_flux) \
             + source 
+
+        return rhs
+
+    def solve(self, t, q):
+        """Solve the model.
+
+        This method solves the model and returns the solution.
+        """
+
+        # Compute the right hand side
+        rhs = self.compute_rhs(q)
 
         return rhs
         
