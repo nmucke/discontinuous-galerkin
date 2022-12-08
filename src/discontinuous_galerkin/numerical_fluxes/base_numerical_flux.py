@@ -14,12 +14,6 @@ class BaseNumericalFlux():
         self.nx = nx
     
     @abstractmethod
-    def flux(self, q):
-        """Compute the flux."""
-
-        raise NotImplementedError
-
-    @abstractmethod
     def compute_numerical_flux(self, q_minus, q_plus):
         """Compute the numerical flux."""
         

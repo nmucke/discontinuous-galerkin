@@ -23,25 +23,28 @@ class StartUp1D():
         self, 
         xmin=0,
         xmax=1,
-        K=10,
-        N=5,
-        poly='legendre'
+        num_elements=10,
+        polynomial_order=5,
+        polynomial_type='legendre',
+        num_states=1,
     ):
         self.xmin = xmin # Lower bound of domain
         self.xmax = xmax # Upper bound of domain
-        self.K = K # Number of elements
-        self.N = N # Polynomial order
-        self.Np = N + 1 # Number of polynomials
+        self.K = num_elements # Number of elements
+        self.N = polynomial_order # Polynomial order
+        self.Np = self.N + 1 # Number of polynomials
+
+        self.num_states = num_states # Number of states
 
         self.NODETOL = 1e-10
         self.Nfp = 1
         self.Nfaces = 2 # Number of faces on elements
 
         # Legendre or Chebyshev polynomials
-        if poly == 'legendre':
+        if polynomial_type == 'legendre':
             self.alpha = 0
             self.beta = 0
-        elif poly == 'chebyshev':
+        elif polynomial_type == 'chebyshev':
             self.alpha = -0.5
             self.beta = -0.5
 
@@ -92,6 +95,7 @@ class StartUp1D():
         self.mapO,self.vmapI,self.vmapO = self.BuildMaps1D()
 
         self.nx = self.Normals1D()
+        self.nx = self.nx.flatten('F')
 
         self.rx, self.J = self.GeometricFactors()
 

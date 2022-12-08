@@ -15,42 +15,22 @@ class GeneralizedSlopeLimiter(BaseStabilizer):
     unstable.  
     """
 
-    def __init__(
-        self, 
-        x,
-        polynomial_order, 
-        num_elements, 
-        vandermonde_matrix,
-        delta_x,
-        num_states,
-        inverse_vandermonde_matrix,
-        differentiation_matrix,
-        second_derivative_upper_bound=1e-5,
-        ):
+    def __init__(self, variables, second_derivative_upper_bound=1e-5):
         """Initialize slope limiter class"""
 
-        super(GeneralizedSlopeLimiter, self).__init__(
-            polynomial_order=polynomial_order,
-            num_elements=num_elements,
-            num_polynomials=polynomial_order+1,
-            vandermonde_matrix=vandermonde_matrix,
-            inverse_vandermonde_matrix=inverse_vandermonde_matrix,
-            num_states=num_states,
-            x=x,
-        )
+        super(GeneralizedSlopeLimiter, self).__init__()
 
-        self.delta_x = delta_x
-        self.Dr = differentiation_matrix
+        self.variables = variables
+
         self.M = second_derivative_upper_bound
 
 
-    def minmod(self, v):
+    def _minmod(self, v):
         """ Minmod function 
 
         v: numpy.ndarray - the array to apply the minmod function to
 
         returns: numpy.ndarray - the minmod function applied to v
-        
         """
 
         m = v.shape[0]
@@ -64,7 +44,7 @@ class GeneralizedSlopeLimiter(BaseStabilizer):
 
         return mfunc
 
-    def minmodB(self, v):
+    def _minmodB(self, v):
         """ Implement the TVB modified minmod function
 
         v: numpy.ndarray - the array to apply the minmod function to
@@ -73,39 +53,39 @@ class GeneralizedSlopeLimiter(BaseStabilizer):
         """
 
         mfunc = v[0,:]
-        ids = np.argwhere(np.abs(mfunc) > self.M*self.delta_x*self.delta_x)
+        ids = np.argwhere(np.abs(mfunc) > self.M*self.variables.deltax*self.variables.deltax)
 
         if np.shape(ids)[0]>0:
-            mfunc[ids[:,0]] = self.minmod(v[:,ids[:,0]])
+            mfunc[ids[:,0]] = self._minmod(v[:,ids[:,0]])
 
         return mfunc
 
-    def SlopeLimitLin(self,ul,xl,vm1,v0,vp1):
+    def _SlopeLimitLin(self,ul,xl,vm1,v0,vp1):
         """ Apply slopelimited on linear function ul(Np,1) on x(Np,1)
             (vm1,v0,vp1) are cell averages left, center, and right"""
 
         ulimit = ul
-        h = xl[self.Np-1,:]-xl[0,:]
+        h = xl[self.variables.Np-1,:]-xl[0,:]
 
-        x0 = np.ones((self.Np,1))*(xl[0,:]+h/2)
+        x0 = np.ones((self.variables.Np,1))*(xl[0,:]+h/2)
 
-        hN = np.ones((self.Np,1))*h
+        hN = np.ones((self.variables.Np,1))*h
 
-        ux = (2/hN) * np.dot(self.Dr,ul)
+        ux = (2/hN) * np.dot(self.variables.Dr,ul)
 
-        ulimit = np.ones((self.Np,1))*v0 + (xl-x0)*\
-            self.minmodB(
+        ulimit = np.ones((self.variables.Np,1))*v0 + (xl-x0)*\
+            self._minmodB(
                 np.stack((ux[0,:],np.divide((vp1-v0),h),np.divide((v0-vm1),h)), axis=0)
                 )
 
         return ulimit
 
-    def SlopeLimitN(self, u):
+    def _SlopeLimitN(self, u):
         """ Apply slopelimiter (Pi^N) to u assuming u an N'th order polynomial """
 
-        uh = np.dot(self.invV,u)
-        uh[1:self.Np,:] = 0
-        uavg = np.dot(self.V,uh)
+        uh = np.dot(self.variables.invV,u)
+        uh[1:self.variables.Np,:] = 0
+        uavg = np.dot(self.variables.V,uh)
         v = uavg[0:1,:]
 
         ulimit = u
@@ -115,30 +95,31 @@ class GeneralizedSlopeLimiter(BaseStabilizer):
         ue2 = u[-1:,:]
 
         vk = v
-        vkm1 = np.concatenate((v[0,0:1],v[0,0:self.K-1]),axis=0)
-        vkp1 = np.concatenate((v[0,1:self.K],v[0,(self.K-1):(self.K)]))
+        vkm1 = np.concatenate((v[0,0:1],v[0,0:self.variables.K-1]),axis=0)
+        vkp1 = np.concatenate((v[0,1:self.variables.K],v[0,(self.variables.K-1):(self.variables.K)]))
 
-        ve1 = vk - self.minmod(np.concatenate((vk-ue1,vk-vkm1,vkp1-vk)))
-        ve2 = vk + self.minmod(np.concatenate((ue2-vk,vk-vkm1,vkp1-vk)))
+        ve1 = vk - self._minmod(np.concatenate((vk-ue1,vk-vkm1,vkp1-vk)))
+        ve2 = vk + self._minmod(np.concatenate((ue2-vk,vk-vkm1,vkp1-vk)))
 
         ids = np.argwhere((np.abs(ve1-ue1)>eps0) | (np.abs(ve2-ue2)>eps0))[:,1]
         if ids.shape[0] != 0:
 
-            uhl = np.dot(self.invV,u[:,ids])
-            uhl[2:(self.Np+1),:] = 0
-            ul = np.dot(self.V,uhl)
+            uhl = np.dot(self.variables.invV,u[:,ids])
+            uhl[2:(self.variables.Np+1),:] = 0
+            ul = np.dot(self.variables.V,uhl)
 
-            ulimit[:,ids] = self.SlopeLimitLin(ul,self.x[:,ids],vkm1[ids],
+            ulimit[:,ids] = self._SlopeLimitLin(ul,self.variables.x[:,ids],vkm1[ids],
                                                 vk[0,ids],vkp1[ids])
 
         return ulimit
 
     def apply_stabilizer(self, q):
+        """ Apply slope limiter to q """
 
         states = []
-        for i in range(self.num_states):
-            states.append(self.SlopeLimitN(np.reshape(
-                            q[(i*(self.Np*self.K)):((i+1)*(self.Np*self.K))],
-                                (self.Np,self.K),'F')).flatten('F'))
+        for i in range(self.variables.num_states):
+            states.append(self._SlopeLimitN(np.reshape(
+                            q[(i*(self.variables.Np*self.variables.K)):((i+1)*(self.variables.Np*self.variables.K))],
+                                (self.variables.Np,self.variables.K),'F')).flatten('F'))
 
         return np.asarray(states).flatten()

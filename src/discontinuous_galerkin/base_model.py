@@ -1,15 +1,21 @@
 import numpy as np
 from discontinuous_galerkin.start_up_routines.start_up_1D import StartUp1D
+from discontinuous_galerkin.stabilizers.stabilizer import get_stabilizer
+from discontinuous_galerkin.numerical_fluxes.numerical_flux import get_numerical_flux
 from discontinuous_galerkin.stabilizers.slope_limiters import GeneralizedSlopeLimiter
-from discontinuous_galerkin.stabilizers.filters import ExponentialFilter1D
-from discontinuous_galerkin.numerical_fluxes.lax_friedrichs import LaxFriedrichsFlux
+
 from abc import abstractmethod
+
 
 import pdb
 
 
-class BaseModel(StartUp1D):
-    """Base class for all models.
+
+
+#class BaseModel(StartUp1D, Stabilizer, NumericalFlux):
+class BaseModel():
+    """
+    Base class for all models.
 
     This class contains the basic functionality for all models. It is not
     intended to be used directly, but rather as a base class for other models.
@@ -21,74 +27,39 @@ class BaseModel(StartUp1D):
         xmax=1.,
         num_elements=10,
         polynomial_order=5,
-        poly_type='legendre',
+        polynomial_type='legendre',
         num_states=1,
         stabilizer_type=None, 
         stabilizer_params=None,
         time_stepper='ImplicitEuler',
-        numerical_flux='lax_friedrichs',
+        numerical_flux_type='lax_friedrichs',
+        numerical_flux_params=None,
         ):
-        super(BaseModel, self).__init__(
+        """Initialize base model class."""        
+
+        # Initialize the start-up routine        
+        self.variables = StartUp1D(
             xmin=xmin,
             xmax=xmax,
-            K=num_elements,
-            N=polynomial_order,
-            poly=poly_type,
+            num_elements=num_elements,
+            polynomial_order=polynomial_order,
+            polynomial_type=polynomial_type,
+            num_states=num_states,
+            )
+
+        # Initialize the stabilizer
+        self.stabilizer = get_stabilizer(
+            variables=self.variables,
+            stabilizer_type=stabilizer_type,
+            stabilizer_params=stabilizer_params,
         )
-        self.xmin = xmin
-        self.xmax = xmax
-        self.K = num_elements
-        self.N = polynomial_order
-        self.poly_type = poly_type
-        self.Np = self.N + 1
-        self.num_states=num_states
 
-        self.stabilizer_type = stabilizer_type
-
-        if stabilizer_params is not None:
-            self.stabilizer_params = stabilizer_params
-            self.set_up_stabilizer()
-
-        self.time_stepper = time_stepper
-
-        self.numerical_flux = LaxFriedrichsFlux
-
-    def set_up_stabilizer(self):
-        """Set up the stabilizer."""
-
-        base_stabilizer_params = {
-            'polynomial_order': self.N,
-            'num_elements': self.K,
-            'vandermonde_matrix': self.V,
-            'inverse_vandermonde_matrix': self.invV,
-            'num_states': self.num_states,
-            'x': self.x,
-        }
-
-        if self.stabilizer_type == 'slope_limiter':
-            self.stabilizer = GeneralizedSlopeLimiter(
-                **base_stabilizer_params,
-                **self.stabilizer_params,
-                differentiation_matrix=self.Dr,
-                delta_x=self.deltax,
-            )
-        elif self.stabilizer_type == 'filter':
-            self.stabilizer = ExponentialFilter1D(
-                **base_stabilizer_params,
-                **self.stabilizer_params
-            )
-        
-        self.apply_stabilizer = self.stabilizer.apply_stabilizer
-
-    def set_up_numerical_flux(self):
-        """Set up the numerical flux."""
-
-        pass
-
-    def set_up_time_stepper(self):
-        """Set up the time stepper."""
-
-        pass
+        # Initialize the numerical flux
+        self.numerical_flux = get_numerical_flux(
+            variables=self.variables,
+            numerical_flux_type=numerical_flux_type,
+            numerical_flux_params=numerical_flux_params,
+        )
 
 
     def __str__(self):
@@ -101,7 +72,7 @@ class BaseModel(StartUp1D):
         output += f"Polynomial order: {self.N} \n"
         output += f"Polynomial type: {self.poly_type} \n"
         output += f"Stabilizer: {self.stabilizer_type} \n"
-        output += f"Time stepping: {self.time_stepper} \n"
+        #output += f"Time stepping: {self.time_stepper} \n"
         
         return output
 
@@ -147,18 +118,40 @@ class BaseModel(StartUp1D):
         source = self.source(q)
 
         # Compute the right hand side
-        rhs = -self.Dr @ flux + source
+        rhs = -self.variables.Dr @ flux + source
 
         return rhs
 
-    def solve(self, ):
+    def solve(self, q):
         """Solve the model.
 
         This method solves the model and returns the solution.
         """
 
-        q = self.flux(self.initial_condition(self.x))
+        # Compute the flux
+        flux = self.flux(q)
 
-        return q
+        # Compute the numerical flux
+        numerical_flux = self.numerical_flux.compute_numerical_flux(
+            q_inside=q.flatten('F')[self.variables.vmapM], 
+            q_outside=q.flatten('F')[self.variables.vmapM],
+            flux_inside=flux.flatten('F')[self.variables.vmapM],
+            flux_outside=flux.flatten('F')[self.variables.vmapM],
+            )
+        numerical_flux = numerical_flux.reshape(
+            self.variables.Nfp * self.variables.Nfaces, 
+            self.variables.K, 
+            order='F'
+            )
+            
+        # Compute the source term
+        source = self.source(q)
+
+        # Compute the right hand side
+        rhs = self.variables.Dr @ flux \
+            - self.variables.LIFT @ (self.variables.Fscale * numerical_flux) \
+            + source 
+
+        return rhs
         
 
