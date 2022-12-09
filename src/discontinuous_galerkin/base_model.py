@@ -2,7 +2,9 @@ import numpy as np
 from discontinuous_galerkin.start_up_routines.start_up_1D import StartUp1D
 from discontinuous_galerkin.stabilizers.stabilizer import get_stabilizer
 from discontinuous_galerkin.numerical_fluxes.numerical_flux import get_numerical_flux
-from discontinuous_galerkin.stabilizers.slope_limiters import GeneralizedSlopeLimiter
+from discontinuous_galerkin.time_integrators.time_integrator import get_time_integrator
+
+import matplotlib.pyplot as plt
 
 from abc import abstractmethod
 
@@ -31,14 +33,17 @@ class BaseModel():
         num_states=1,
         stabilizer_type=None, 
         stabilizer_params=None,
-        time_stepper='ImplicitEuler',
+        time_integrator_type='implicit_euler',
+        time_integrator_params=None,
         numerical_flux_type='lax_friedrichs',
         numerical_flux_params=None,
         ):
-        """Initialize base model class."""        
+        """Initialize base model class.""" 
+
+        self.time_integrator_params = time_integrator_params       
 
         # Initialize the start-up routine        
-        self.variables = StartUp1D(
+        self.DG_vars = StartUp1D(
             xmin=xmin,
             xmax=xmax,
             num_elements=num_elements,
@@ -49,16 +54,26 @@ class BaseModel():
 
         # Initialize the stabilizer
         self.stabilizer = get_stabilizer(
-            variables=self.variables,
+            DG_vars=self.DG_vars,
             stabilizer_type=stabilizer_type,
             stabilizer_params=stabilizer_params,
         )
 
         # Initialize the numerical flux
         self.numerical_flux = get_numerical_flux(
-            variables=self.variables,
+            DG_vars=self.DG_vars,
             numerical_flux_type=numerical_flux_type,
             numerical_flux_params=numerical_flux_params,
+        )
+
+        # Initialize the time integrastor
+        if time_integrator_type is 'SSPRK':
+            time_integrator_params['stabilizer'] = self.stabilizer
+
+        self.time_integrator = get_time_integrator(
+            DG_vars=self.DG_vars,
+            time_integrator_type=time_integrator_type,
+            time_integrator_params=time_integrator_params,
         )
 
 
@@ -108,33 +123,47 @@ class BaseModel():
 
         raise NotImplementedError
 
-    def compute_rhs(self, q):
+    def compute_rhs(self, t, q):
         """Compute the right hand side of the discretized model."""
 
         # Compute the flux
         flux = self.flux(q)
 
         # Compute the numerical flux
-        numerical_flux = self.numerical_flux.compute_numerical_flux(
-            q_inside=q.flatten('F')[self.variables.vmapM], 
-            q_outside=q.flatten('F')[self.variables.vmapM],
-            flux_inside=flux.flatten('F')[self.variables.vmapM],
-            flux_outside=flux.flatten('F')[self.variables.vmapM],
-            )
-        numerical_flux = numerical_flux.reshape(
-            self.variables.Nfp * self.variables.Nfaces, 
-            self.variables.K, 
-            order='F'
+        numerical_flux = self.numerical_flux(
+            q_inside=q[:, self.DG_vars.vmapM], 
+            q_outside=q[:, self.DG_vars.vmapM],
+            flux_inside=flux[:, self.DG_vars.vmapM],
+            flux_outside=flux[:, self.DG_vars.vmapM],
             )
             
         # Compute the source term
         source = self.source(q)
 
+        # Reshape terms
+        flux = flux.reshape(
+            (self.DG_vars.num_states, self.DG_vars.Np, self.DG_vars.K), 
+            order='F'
+            )
+        numerical_flux = numerical_flux.reshape(
+            (self.DG_vars.num_states, self.DG_vars.Nfp * self.DG_vars.Nfaces, self.DG_vars.K), 
+            order='F'
+            )
+        source = source.reshape(
+            (self.DG_vars.num_states, self.DG_vars.Np, self.DG_vars.K), 
+            order='F'
+            )
+
         # Compute the right hand side
-        rhs = self.variables.Dr @ flux \
-            - self.variables.LIFT @ (self.variables.Fscale * numerical_flux) \
+        rhs = np.multiply(self.DG_vars.rx, self.DG_vars.Dr @ flux) \
+            - self.DG_vars.LIFT @ (self.DG_vars.Fscale * numerical_flux) \
             + source 
 
+        rhs = rhs.reshape(
+            (self.DG_vars.num_states, self.DG_vars.Np * self.DG_vars.K), 
+            order='F'
+            )
+            
         return rhs
 
     def solve(self, t, q):
@@ -142,10 +171,14 @@ class BaseModel():
 
         This method solves the model and returns the solution.
         """
+        # Compute next time step
+        q_next, t_next = self.time_integrator(
+            t=t, 
+            q=q, 
+            step_size=self.time_integrator_params['step_size'], 
+            rhs=self.compute_rhs
+            )
 
-        # Compute the right hand side
-        rhs = self.compute_rhs(q)
-
-        return rhs
+        return q_next
         
 

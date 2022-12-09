@@ -3,19 +3,19 @@ from discontinuous_galerkin.stabilizers.filters import ExponentialFilter
 import pdb 
 
 
-def get_stabilizer(variables, stabilizer_type, stabilizer_params):
+def get_stabilizer(DG_vars, stabilizer_type, stabilizer_params):
 
     if stabilizer_type == 'slope_limiter':
         if stabilizer_params is None:
-            stabilizer = GeneralizedSlopeLimiter(variables)
+            stabilizer = GeneralizedSlopeLimiter(DG_vars)
         else:
-            stabilizer = GeneralizedSlopeLimiter(variables, **stabilizer_params)
+            stabilizer = GeneralizedSlopeLimiter(DG_vars, **stabilizer_params)
 
     elif stabilizer_type == 'filter':
         if stabilizer_params is None:
-            stabilizer = ExponentialFilter(variables)
+            stabilizer = ExponentialFilter(DG_vars)
         else:
-            stabilizer = ExponentialFilter(variables, **stabilizer_params)
+            stabilizer = ExponentialFilter(DG_vars, **stabilizer_params)
 
     return stabilizer
 

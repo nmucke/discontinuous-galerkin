@@ -11,12 +11,12 @@ class LaxFriedrichsFlux(BaseNumericalFlux):
     It is not intended to be used directly, but rather as a base class for other
     numerical fluxes.
     """
-    def __init__(self, variables, alpha=0.5):
+    def __init__(self, DG_vars, alpha=0.5):
         """Initialize the class."""
 
-        super().__init__(variables)
+        super().__init__(DG_vars)
 
-        self.variables = variables
+        self.DG_vars = DG_vars
         self.alpha = alpha
     
     def average_operator(self, q_inside, q_outside):
@@ -29,7 +29,7 @@ class LaxFriedrichsFlux(BaseNumericalFlux):
     def jump_operator(self, q_inside, q_outside):
         """Compute the jump operator."""
 
-        jump = self.variables.nx * (q_outside - q_inside)
+        jump = self.DG_vars.nx * (q_outside - q_inside)
 
         return jump
 

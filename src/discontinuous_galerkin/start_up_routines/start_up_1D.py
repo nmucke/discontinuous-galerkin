@@ -52,15 +52,15 @@ class StartUp1D():
         self.V = Vandermonde1D(self.r, self.alpha, self.beta,
                                self.N)  # Vandermonde matrix
         self.invV = np.linalg.inv(self.V)  # Inverse Vandermonde matrix
-        #self.Dr = self.Dmatrix1D(self.r, self.alpha, self.beta, self.N,self.V)  # Differentiation matrix
-        self.Dr = self.Dmatrix1D()  # Differentiation matrix
-        #self.M = np.transpose(
-        #    np.linalg.solve(np.transpose(self.invV), self.invV))  # Mass matrix
-        #self.invM = np.linalg.inv(self.M)  # Inverse mass matrix
-
+ 
+        
         self.invM = np.dot(self.V, np.transpose(self.V))
         self.M = np.linalg.inv(self.invM)
 
+        self.Dr = self.Dmatrix1D()  # Differentiation matrix
+
+        self.S = self.M @ self.Dr  # Stiffness matrix
+        self.Dr = self.invM @ np.transpose(self.S)  # Differentiation matrix
 
         self.LIFT = self.lift1D()  # Surface integral
 
@@ -224,7 +224,9 @@ class StartUp1D():
 
         Vr = GradVandermonde1D(self.r,self.alpha,self.beta,self.N)
 
-        Dr = np.transpose(np.linalg.solve(np.transpose(self.V),np.transpose(Vr)))
+        MM = np.linalg.solve(np.transpose(self.V),np.transpose(Vr))
+
+        Dr = np.transpose(MM)
         return Dr
 
     def identity(self,x,num_states=1):

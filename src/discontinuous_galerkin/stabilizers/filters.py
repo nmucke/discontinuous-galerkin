@@ -15,12 +15,12 @@ class ExponentialFilter(BaseStabilizer):
     qf = V*diag(filterdiag)*invV*q
     """
 
-    def __init__(self, variables, num_modes_to_filter=5, filter_order=32,):
+    def __init__(self, DG_vars, num_modes_to_filter=5, filter_order=32,):
         """Initialize exponential filter"""
 
         super(ExponentialFilter, self).__init__()
 
-        self.variables = variables
+        self.DG_vars = DG_vars
 
         self.Nc = num_modes_to_filter
         self.s = filter_order
@@ -32,24 +32,24 @@ class ExponentialFilter(BaseStabilizer):
         """Initialize 1D filter matrix of size N.
             Order of exponential filter is (even) s with cutoff at Nc;"""
 
-        filterdiag = np.ones((self.variables.Np))
+        filterdiag = np.ones((self.DG_vars.Np))
 
         alpha = -np.log(np.finfo(float).eps)
 
-        for i in range(self.Nc, self.variables.N):
+        for i in range(self.Nc, self.DG_vars.N):
             #filterdiag[i+1] = np.ef.Np(-alpha*((i-Nc)/(N-Nc))**s)
-            filterdiag[i+1] = np.exp(-alpha*((i-1)/self.variables.N)**self.s)
+            filterdiag[i+1] = np.exp(-alpha*((i-1)/self.DG_vars.N)**self.s)
             
 
-        return np.dot(self.variables.V,np.dot(np.diag(filterdiag),self.variables.invV))
+        return np.dot(self.DG_vars.V,np.dot(np.diag(filterdiag),self.DG_vars.invV))
 
     def apply_stabilizer(self, q):
         """Apply filter to state vector"""
 
         states = []
-        for i in range(self.variables.num_states):
+        for i in range(self.DG_vars.num_states):
             states.append(np.dot(self.filterMat,np.reshape(
-                    q[(i * (self.variables.Np * self.variables.K)):((i + 1) * (self.variables.Np * self.variables.K))],
-                    (self.variables.Np, self.variables.K), 'F')).flatten('F'))
+                    q[(i * (self.DG_vars.Np * self.DG_vars.K)):((i + 1) * (self.DG_vars.Np * self.DG_vars.K))],
+                    (self.DG_vars.Np, self.DG_vars.K), 'F')).flatten('F'))
 
         return np.asarray(states).flatten()

@@ -15,12 +15,12 @@ class GeneralizedSlopeLimiter(BaseStabilizer):
     unstable.  
     """
 
-    def __init__(self, variables, second_derivative_upper_bound=1e-5):
+    def __init__(self, DG_vars, second_derivative_upper_bound=1e-5):
         """Initialize slope limiter class"""
 
         super(GeneralizedSlopeLimiter, self).__init__()
 
-        self.variables = variables
+        self.DG_vars = DG_vars
 
         self.M = second_derivative_upper_bound
 
@@ -53,7 +53,7 @@ class GeneralizedSlopeLimiter(BaseStabilizer):
         """
 
         mfunc = v[0,:]
-        ids = np.argwhere(np.abs(mfunc) > self.M*self.variables.deltax*self.variables.deltax)
+        ids = np.argwhere(np.abs(mfunc) > self.M*self.DG_vars.deltax*self.DG_vars.deltax)
 
         if np.shape(ids)[0]>0:
             mfunc[ids[:,0]] = self._minmod(v[:,ids[:,0]])
@@ -65,15 +65,15 @@ class GeneralizedSlopeLimiter(BaseStabilizer):
             (vm1,v0,vp1) are cell averages left, center, and right"""
 
         ulimit = ul
-        h = xl[self.variables.Np-1,:]-xl[0,:]
+        h = xl[self.DG_vars.Np-1,:]-xl[0,:]
 
-        x0 = np.ones((self.variables.Np,1))*(xl[0,:]+h/2)
+        x0 = np.ones((self.DG_vars.Np,1))*(xl[0,:]+h/2)
 
-        hN = np.ones((self.variables.Np,1))*h
+        hN = np.ones((self.DG_vars.Np,1))*h
 
-        ux = (2/hN) * np.dot(self.variables.Dr,ul)
+        ux = (2/hN) * np.dot(self.DG_vars.Dr,ul)
 
-        ulimit = np.ones((self.variables.Np,1))*v0 + (xl-x0)*\
+        ulimit = np.ones((self.DG_vars.Np,1))*v0 + (xl-x0)*\
             self._minmodB(
                 np.stack((ux[0,:],np.divide((vp1-v0),h),np.divide((v0-vm1),h)), axis=0)
                 )
@@ -83,9 +83,9 @@ class GeneralizedSlopeLimiter(BaseStabilizer):
     def _SlopeLimitN(self, u):
         """ Apply slopelimiter (Pi^N) to u assuming u an N'th order polynomial """
 
-        uh = np.dot(self.variables.invV,u)
-        uh[1:self.variables.Np,:] = 0
-        uavg = np.dot(self.variables.V,uh)
+        uh = np.dot(self.DG_vars.invV,u)
+        uh[1:self.DG_vars.Np,:] = 0
+        uavg = np.dot(self.DG_vars.V,uh)
         v = uavg[0:1,:]
 
         ulimit = u
@@ -95,8 +95,8 @@ class GeneralizedSlopeLimiter(BaseStabilizer):
         ue2 = u[-1:,:]
 
         vk = v
-        vkm1 = np.concatenate((v[0,0:1],v[0,0:self.variables.K-1]),axis=0)
-        vkp1 = np.concatenate((v[0,1:self.variables.K],v[0,(self.variables.K-1):(self.variables.K)]))
+        vkm1 = np.concatenate((v[0,0:1],v[0,0:self.DG_vars.K-1]),axis=0)
+        vkp1 = np.concatenate((v[0,1:self.DG_vars.K],v[0,(self.DG_vars.K-1):(self.DG_vars.K)]))
 
         ve1 = vk - self._minmod(np.concatenate((vk-ue1,vk-vkm1,vkp1-vk)))
         ve2 = vk + self._minmod(np.concatenate((ue2-vk,vk-vkm1,vkp1-vk)))
@@ -104,11 +104,11 @@ class GeneralizedSlopeLimiter(BaseStabilizer):
         ids = np.argwhere((np.abs(ve1-ue1)>eps0) | (np.abs(ve2-ue2)>eps0))[:,1]
         if ids.shape[0] != 0:
 
-            uhl = np.dot(self.variables.invV,u[:,ids])
-            uhl[2:(self.variables.Np+1),:] = 0
-            ul = np.dot(self.variables.V,uhl)
+            uhl = np.dot(self.DG_vars.invV,u[:,ids])
+            uhl[2:(self.DG_vars.Np+1),:] = 0
+            ul = np.dot(self.DG_vars.V,uhl)
 
-            ulimit[:,ids] = self._SlopeLimitLin(ul,self.variables.x[:,ids],vkm1[ids],
+            ulimit[:,ids] = self._SlopeLimitLin(ul,self.DG_vars.x[:,ids],vkm1[ids],
                                                 vk[0,ids],vkp1[ids])
 
         return ulimit
@@ -117,9 +117,15 @@ class GeneralizedSlopeLimiter(BaseStabilizer):
         """ Apply slope limiter to q """
 
         states = []
-        for i in range(self.variables.num_states):
-            states.append(self._SlopeLimitN(np.reshape(
-                            q[(i*(self.variables.Np*self.variables.K)):((i+1)*(self.variables.Np*self.variables.K))],
-                                (self.variables.Np,self.variables.K),'F')).flatten('F'))
+        for i in range(self.DG_vars.num_states):
+            states.append(
+                self._SlopeLimitN(
+                    np.reshape(
+                        q[(i*(self.DG_vars.Np*self.DG_vars.K)):((i+1)*(self.DG_vars.Np*self.DG_vars.K))],
+                        (self.DG_vars.Np,self.DG_vars.K),
+                        order='F'
+                        )
+                    ).flatten('F')
+                )
 
         return np.asarray(states).flatten()

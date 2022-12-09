@@ -20,4 +20,7 @@ class BaseNumericalFlux():
         raise NotImplementedError
 
 
+    def __call__(self, **kwargs):
+        return self.compute_numerical_flux(**kwargs)
+
 
