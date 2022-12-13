@@ -1,5 +1,5 @@
 import numpy as np
-from discontinuous_galerkin.time_integrators.base_time_integrator import BaseTimeIntegrator
+from discontinuous_galerkin.base.base_time_integrator import BaseTimeIntegrator
 import pdb
 
 import matplotlib.pyplot as plt

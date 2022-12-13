@@ -1,5 +1,5 @@
 import numpy as np
-from discontinuous_galerkin.stabilizers.base_stabilizer import BaseStabilizer
+from discontinuous_galerkin.base.base_stabilizer import BaseStabilizer
 import pdb
 
 class ExponentialFilter(BaseStabilizer):

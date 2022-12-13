@@ -1,6 +1,6 @@
 import numpy as np
 from abc import abstractmethod
-from discontinuous_galerkin.numerical_fluxes.base_numerical_flux import BaseNumericalFlux
+from discontinuous_galerkin.base.base_numerical_flux import BaseNumericalFlux
 import pdb
 
 class LaxFriedrichsFlux(BaseNumericalFlux):
