@@ -8,10 +8,7 @@ import matplotlib.pyplot as plt
 
 from abc import abstractmethod
 
-
 import pdb
-
-
 
 
 #class BaseModel(StartUp1D, Stabilizer, NumericalFlux):
