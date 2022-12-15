@@ -52,4 +52,4 @@ class ExponentialFilter(BaseStabilizer):
                     q[(i * (self.DG_vars.Np * self.DG_vars.K)):((i + 1) * (self.DG_vars.Np * self.DG_vars.K))],
                     (self.DG_vars.Np, self.DG_vars.K), 'F')).flatten('F'))
 
-        return np.asarray(states).flatten()
+        return np.expand_dims(np.asarray(states).flatten(), 0)

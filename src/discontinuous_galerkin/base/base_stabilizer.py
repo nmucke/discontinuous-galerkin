@@ -13,5 +13,5 @@ class BaseStabilizer():
 
         raise NotImplementedError
 
-    def __call__(self, **kwargs):
-        return self.apply_stabilizer(**kwargs)
+    def __call__(self, q):
+        return self.apply_stabilizer(q)

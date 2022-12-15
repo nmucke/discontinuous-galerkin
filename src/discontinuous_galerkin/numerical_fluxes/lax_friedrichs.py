@@ -14,7 +14,7 @@ class LaxFriedrichsFlux(BaseNumericalFlux):
     def __init__(self, DG_vars, alpha=0.5):
         """Initialize the class."""
 
-        super().__init__(DG_vars)
+        super(LaxFriedrichsFlux).__init__()
 
         self.DG_vars = DG_vars
         self.alpha = alpha
@@ -22,28 +22,27 @@ class LaxFriedrichsFlux(BaseNumericalFlux):
     def average_operator(self, q_inside, q_outside):
         """Compute the average operator."""
 
-        average = (q_inside + q_outside) / 2
-
-        return average
+        return (q_inside + q_outside) / 2
 
     def jump_operator(self, q_inside, q_outside):
         """Compute the jump operator."""
 
-        jump = self.DG_vars.nx * (q_outside - q_inside)
-
-        return jump
+        return self.DG_vars.nx * (q_inside - q_outside)
 
     def compute_numerical_flux(self, q_inside, q_outside, flux_inside, flux_outside):
         """Compute the numerical flux."""
-        
+
         # Compute the average of the fluxes
-        q_average = self.average_operator(flux_inside, flux_outside)
+        flux_average = self.average_operator(flux_inside, flux_outside)
 
         # Compute the jump of the states
         q_jump = self.jump_operator(q_inside, q_outside)
 
-        # Compute the numerical flux
-        numerical_flux = q_average + (1 - self.alpha) / 2 * q_jump
+        # Compute the velocity
+        C = 2*np.pi
 
+        # Compute the numerical flux
+        numerical_flux = flux_average + C * 0.5 * (1 - self.alpha) * q_jump
+        
         return numerical_flux
 

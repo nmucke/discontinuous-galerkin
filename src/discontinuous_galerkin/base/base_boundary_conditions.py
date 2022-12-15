@@ -21,11 +21,10 @@ class BaseBoundaryConditions():
         raise NotImplementedError
 
     @abstractmethod
-    def apply_boundary_conditions(self, ):
+    def apply_boundary_conditions(self, q):
         """Apply the boundary conditions."""
         
         raise NotImplementedError
-
 
     def __call__(self, **kwargs):
         return self.apply_boundary_conditions(**kwargs)

@@ -4,7 +4,7 @@ from discontinuous_galerkin.start_up_routines.start_up_1D import StartUp1D
 import matplotlib.pyplot as plt
 import pdb
 
-class AdvectionEquation(BaseModel):
+class BurgersEquation(BaseModel):
     """Advection equation model class."""
 
     def __init__(
@@ -51,7 +51,7 @@ class AdvectionEquation(BaseModel):
         """Compute the boundary conditions."""
 
         BC_state_1 = {
-            'left': -np.sin(2 * np.pi * t),
+            'left': None,
             'right': None,
         }
 
@@ -62,7 +62,7 @@ class AdvectionEquation(BaseModel):
     def flux(self, q):
         """Compute the flux."""
 
-        return 2*np.pi*q
+        return q*q
     
     def source(self, q):
         """Compute the source."""

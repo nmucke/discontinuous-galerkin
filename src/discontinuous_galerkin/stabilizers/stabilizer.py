@@ -17,5 +17,8 @@ def get_stabilizer(DG_vars, stabilizer_type, stabilizer_params):
         else:
             stabilizer = ExponentialFilter(DG_vars, **stabilizer_params)
 
+    else:
+        stabilizer = lambda q: q
+
     return stabilizer
 

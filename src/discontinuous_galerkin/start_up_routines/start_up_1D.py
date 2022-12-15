@@ -59,8 +59,8 @@ class StartUp1D():
 
         self.Dr = self.Dmatrix1D()  # Differentiation matrix
 
-        self.S = self.M @ self.Dr  # Stiffness matrix
-        self.Dr = self.invM @ np.transpose(self.S)  # Differentiation matrix
+        #self.S = self.M @ self.Dr  # Stiffness matrix
+        #self.Dr = self.invM @ np.transpose(self.S)  # Differentiation matrix
 
         self.LIFT = self.lift1D()  # Surface integral
 

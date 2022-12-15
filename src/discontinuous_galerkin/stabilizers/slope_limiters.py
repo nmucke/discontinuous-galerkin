@@ -128,4 +128,4 @@ class GeneralizedSlopeLimiter(BaseStabilizer):
                     ).flatten('F')
                 )
 
-        return np.asarray(states).flatten()
+        return np.expand_dims(np.asarray(states).flatten(), 0)

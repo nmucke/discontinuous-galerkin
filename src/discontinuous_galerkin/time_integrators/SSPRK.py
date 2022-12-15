@@ -22,17 +22,18 @@ class SSPRK(BaseTimeIntegrator):
         self.c = np.array([0, 1, 1/2])
 
     def time_step(self, t, q, step_size, rhs):
-
+        """Perform a single time step."""
+        
         q_new = self.a[0,0]*q + \
              self.b[0]*step_size*rhs(t + self.c[0]*step_size,q)
-        #q_new = self.stabilizer(q_new)
+        q_new = self.stabilizer(q_new)
 
         q_new = self.a[1,0]*q + self.a[1,1]*q_new + \
             self.b[1]*step_size*rhs(t + self.c[1]*step_size,q_new)
-        #q_new = self.stabilizer(q_new)
+        q_new = self.stabilizer(q_new)
 
         q_new = self.a[2,0]*q + self.a[2,2]*q_new + \
             self.b[2]*step_size*rhs(t+ self.c[2]*step_size,q_new)
-        #q_new = self.stabilizer(q_new)
+        q_new = self.stabilizer(q_new)
 
         return q_new, t + step_size

@@ -7,7 +7,7 @@ class BaseTimeIntegrator():
         """Initialize base stabilizer class"""
         
     @abstractmethod
-    def time_step(self, t, q, **kwargs):
+    def time_step(self, **kwargs):
         """Apply stabilizer to state vector"""
 
         raise NotImplementedError
