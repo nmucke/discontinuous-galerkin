@@ -48,8 +48,12 @@ class ExponentialFilter(BaseStabilizer):
 
         states = []
         for i in range(self.DG_vars.num_states):
-            states.append(np.dot(self.filterMat,np.reshape(
-                    q[(i * (self.DG_vars.Np * self.DG_vars.K)):((i + 1) * (self.DG_vars.Np * self.DG_vars.K))],
-                    (self.DG_vars.Np, self.DG_vars.K), 'F')).flatten('F'))
-
-        return np.expand_dims(np.asarray(states).flatten(), 0)
+            filtered_state = np.dot(self.filterMat, np.reshape(
+                q[i],
+                (self.DG_vars.Np, self.DG_vars.K),
+                'F')
+                ).flatten('F')
+            
+            states.append(filtered_state)
+            
+        return np.asarray(states)

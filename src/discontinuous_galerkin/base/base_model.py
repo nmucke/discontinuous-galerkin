@@ -52,11 +52,6 @@ class BaseModel():
             num_states=num_states,
             )
 
-        CFL=0.75
-        dt= CFL/(2*np.pi)*self.DG_vars.dx
-        step_size = .5*dt
-        time_integrator_params['step_size'] = step_size
-
 
         # Initialize the stabilizer
         self.stabilizer = get_stabilizer(
@@ -65,6 +60,7 @@ class BaseModel():
             stabilizer_params=stabilizer_params,
         )
 
+        numerical_flux_params['C'] = self.wave_speed
         # Initialize the numerical flux
         self.numerical_flux = get_numerical_flux(
             DG_vars=self.DG_vars,
@@ -137,6 +133,11 @@ class BaseModel():
     def update_parameters(self, **kwargs):
 
         raise NotImplementedError
+    
+    def wave_speed(self, q):
+        """Compute the wave speed."""
+
+        raise NotImplementedError
 
     def compute_rhs(self, t, q):
         """Compute the right hand side of the discretized model."""
@@ -202,29 +203,39 @@ class BaseModel():
         This method solves the model and returns the solution.
         """
 
-        num_steps = int(np.ceil((t_final - t) / self.time_integrator_params['step_size']))
+        #num_steps = int(np.ceil((t_final - t) / self.time_integrator_params['step_size']))
 
         # Preallocate solution
-        sol = np.zeros(
-            (self.DG_vars.num_states, self.DG_vars.Np * self.DG_vars.K, num_steps)
-            )
+        #sol = np.zeros(
+        #    (self.DG_vars.num_states, self.DG_vars.Np * self.DG_vars.K, num_steps)
+        #    )
+        sol = []
         
         # Set initial condition
-        sol[:, :, 0] = q_init
+        sol.append(q_init)
 
         t_vec = [t]
 
         # Solve the model
-        for i in range(num_steps - 1):
-            sol[:, :, i + 1], t = self.time_integrator(
+        #for i in range(num_steps - 1):
+        while t < t_final:
+            
+            C = np.max(self.wave_speed(sol[-1]))
+            CFL=0.25
+            dt= CFL/C*self.DG_vars.dx
+            step_size = .5*dt
+
+            sol_, t = self.time_integrator(
                 t=t_vec[-1], 
-                q=sol[:, :, i],
-                step_size=self.time_integrator_params['step_size'],
+                q=sol[-1],
+                step_size=step_size,
                 rhs=self.compute_rhs
                 )
             
             t_vec.append(t)
+
+            sol.append(sol_)
         
-        return sol, t_vec
+        return np.stack(sol, axis=-1) , t_vec
         
 

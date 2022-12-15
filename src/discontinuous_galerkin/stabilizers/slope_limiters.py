@@ -118,14 +118,14 @@ class GeneralizedSlopeLimiter(BaseStabilizer):
 
         states = []
         for i in range(self.DG_vars.num_states):
-            states.append(
-                self._SlopeLimitN(
-                    np.reshape(
-                        q[(i*(self.DG_vars.Np*self.DG_vars.K)):((i+1)*(self.DG_vars.Np*self.DG_vars.K))],
-                        (self.DG_vars.Np,self.DG_vars.K),
-                        order='F'
-                        )
-                    ).flatten('F')
-                )
 
-        return np.expand_dims(np.asarray(states).flatten(), 0)
+            
+            limited_state = self._SlopeLimitN(np.reshape(
+                q[i],
+                (self.DG_vars.Np, self.DG_vars.K),
+                'F')
+                ).flatten('F')
+            
+            states.append(limited_state)
+
+        return np.asarray(states)

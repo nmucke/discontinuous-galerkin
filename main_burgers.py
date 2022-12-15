@@ -42,22 +42,27 @@ class BurgersEquation(BaseModel):
     def initial_condition(self, x):
         """Compute the initial condition."""
 
-        init = np.sin(x)
-        init = np.expand_dims(init, 0)
+        init = np.ones(x.shape)
+        init[x<-0.5] = 2*init[x<-0.5]
 
-        return init
+        return np.expand_dims(init, 0)
     
     def boundary_conditions(self, t):
         """Compute the boundary conditions."""
 
         BC_state_1 = {
-            'left': None,
+            'left': 2.0,
             'right': None,
         }
 
         BCs = [BC_state_1]
         
         return BCs
+    
+    def wave_speed(self, q):
+        """Compute the wave speed."""
+
+        return 2*q
         
     def flux(self, q):
         """Compute the flux."""
@@ -72,49 +77,46 @@ class BurgersEquation(BaseModel):
 if __name__ == '__main__':
     
 
-    xmin=0.
-    xmax=2.*np.pi
+    xmin = -1.
+    xmax = 1
 
     BC_types = 'dirichlet'
 
     numerical_flux_type = 'lax_friedrichs'
     numerical_flux_params = {
-        'alpha': .5,
+        'alpha': 0.5,
     }
 
-    '''
     stabilizer_type = 'slope_limiter'
     stabilizer_params = {
-        'second_derivative_upper_bound': 1e-1,
+        'second_derivative_upper_bound': 1e1,
     }
     '''
-    stabilizer_type = None
+    stabilizer_type = 'filter'
     stabilizer_params = {
-        'num_modes_to_filter': 1,
-        'filter_order': 32,
+        'num_modes_to_filter': 0,
+        'filter_order': 6,
     }
+    '''
 
     time_integrator_type = 'SSPRK'
     time_integrator_params = {
-        'step_size': 1e-3
     }
 
     polynomial_type='legendre'
     num_states=1
 
-    true_sol = lambda t: np.sin(advection_DG.DG_vars.x.flatten('F') - 2*np.pi*t)
-
     error = []
-    conv_list = [1, 2, 4, 8, 16]
+    conv_list = [2, 4, 8, 16]
     num_DOFs = []
     for polynomial_order in conv_list:
 
-        #polynomial_order=15
-        num_elements=5
+        #polynomial_order=8
+        num_elements=25
 
         num_DOFs.append((polynomial_order+1)*num_elements)
 
-        advection_DG = AdvectionEquation(
+        burgers_DG = BurgersEquation(
             xmin=xmin,
             xmax=xmax,
             num_elements=num_elements,
@@ -129,16 +131,18 @@ if __name__ == '__main__':
             numerical_flux_type=numerical_flux_type,
             numerical_flux_params=numerical_flux_params,
             )
-        
 
-        init = advection_DG.initial_condition(advection_DG.DG_vars.x.flatten('F'))
-        #flux = lol.compute_rhs(t=0, q=init)
+        init = burgers_DG.initial_condition(burgers_DG.DG_vars.x.flatten('F'))
+
+        true_sol = lambda t: burgers_DG.initial_condition(
+            burgers_DG.DG_vars.x.flatten('F') - 3*t
+            )
         
-        sol, t_vec = advection_DG.solve(t=0, q_init=init, t_final=0.1)
+        sol, t_vec = burgers_DG.solve(t=0, q_init=init, t_final=0.4)
 
         true_sol_array = np.zeros(
-            (advection_DG.DG_vars.num_states, 
-            advection_DG.DG_vars.Np * advection_DG.DG_vars.K, 
+            (burgers_DG.DG_vars.num_states, 
+            burgers_DG.DG_vars.Np * burgers_DG.DG_vars.K, 
             len(t_vec))
             )
         for i in range(len(t_vec)):
@@ -150,17 +154,17 @@ if __name__ == '__main__':
 
     plt.figure()
     plt.loglog(num_DOFs, error, '.-', label='error', linewidth=2, markersize=10)
-    plt.loglog(num_DOFs, [1e-1, 1e-2, 1e-3, 1e-4, 1e-5], label='slope 1', linewidth=2)
-    plt.loglog(num_DOFs, [1e-2, 1e-4, 1e-6, 1e-8, 1e-10], label='slope 2', linewidth=2)
-    plt.loglog(num_DOFs, [1e-3, 1e-6, 1e-9, 1e-12, 1e-15], label='slope 3', linewidth=2)
+    plt.loglog(num_DOFs, [10**(-i) for i in range(len(num_DOFs))], label='slope 1', linewidth=2)
+    plt.loglog(num_DOFs, [10**(-i*2) for i in range(len(num_DOFs))], label='slope 2', linewidth=2)
+    plt.loglog(num_DOFs, [10**(-i*3) for i in range(len(num_DOFs))], label='slope 3', linewidth=2)
     plt.legend()
     plt.grid()
     plt.show()
 
     plt.figure()
-    plt.plot(advection_DG.DG_vars.x.flatten('F'), init[0], label='initial', linewidth=4)
-    plt.plot(advection_DG.DG_vars.x.flatten('F'), true_sol(t_vec[-1]), label='true', linewidth=3)
-    plt.plot(advection_DG.DG_vars.x.flatten('F'), sol[0, :, -1], label='final', linestyle='--', linewidth=2)
+    plt.plot(burgers_DG.DG_vars.x.flatten('F'), init[0], label='initial', linewidth=4)
+    plt.plot(burgers_DG.DG_vars.x.flatten('F'), true_sol(t_vec[-1])[0], label='true', linewidth=3)
+    plt.plot(burgers_DG.DG_vars.x.flatten('F'), sol[0, :, -1], label='final', linestyle='--', linewidth=2)
     plt.grid()
     plt.legend()
     plt.show()

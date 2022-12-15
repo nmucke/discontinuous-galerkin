@@ -5,14 +5,13 @@ import pdb
 import matplotlib.pyplot as plt
 
 class SSPRK(BaseTimeIntegrator):
-    
+    """Strong Stability Preserving Runge-Kutta time integrator class."""    
 
-    def __init__(self, DG_vars, step_size, stabilizer):
+    def __init__(self, DG_vars, stabilizer):
 
         self.time = 0
         self.DG_vars = DG_vars
         self.stabilizer = stabilizer
-        self.step_size = step_size
         
 
         self.a = np.array([[1, 0, 0],

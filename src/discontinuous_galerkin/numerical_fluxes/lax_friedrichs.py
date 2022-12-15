@@ -11,13 +11,18 @@ class LaxFriedrichsFlux(BaseNumericalFlux):
     It is not intended to be used directly, but rather as a base class for other
     numerical fluxes.
     """
-    def __init__(self, DG_vars, alpha=0.5):
+    def __init__(self, DG_vars, alpha=0.5, C=lambda q: np.abs(q)):
         """Initialize the class."""
 
         super(LaxFriedrichsFlux).__init__()
 
         self.DG_vars = DG_vars
         self.alpha = alpha
+        self.C = C
+
+        self.nx_boundary = np.array(
+            [self.DG_vars.nx[self.DG_vars.mapI], self.DG_vars.nx[self.DG_vars.mapO]]
+        )
     
     def average_operator(self, q_inside, q_outside):
         """Compute the average operator."""
@@ -28,18 +33,35 @@ class LaxFriedrichsFlux(BaseNumericalFlux):
         """Compute the jump operator."""
 
         return self.DG_vars.nx * (q_inside - q_outside)
+    
+    def boundary_jump_operator(self, q_inside, q_outside):
+        """Compute the jump operator on the boundary."""
 
-    def compute_numerical_flux(self, q_inside, q_outside, flux_inside, flux_outside):
+        return self.nx_boundary * (q_inside - q_outside)
+
+    def compute_numerical_flux(
+        self, 
+        q_inside, 
+        q_outside, 
+        flux_inside, 
+        flux_outside,
+        on_boundary=False
+        ):
         """Compute the numerical flux."""
 
         # Compute the average of the fluxes
         flux_average = self.average_operator(flux_inside, flux_outside)
 
         # Compute the jump of the states
-        q_jump = self.jump_operator(q_inside, q_outside)
+        if on_boundary:
+            q_jump = self.boundary_jump_operator(q_inside, q_outside)
+        else:
+            q_jump = self.jump_operator(q_inside, q_outside)
 
         # Compute the velocity
-        C = 2*np.pi
+        C_inside = self.C(q_inside)
+        C_outside = self.C(q_outside)
+        C = np.maximum(np.abs(C_inside), np.abs(C_outside))
 
         # Compute the numerical flux
         numerical_flux = flux_average + C * 0.5 * (1 - self.alpha) * q_jump

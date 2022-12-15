@@ -24,28 +24,16 @@ class DirichletBoundaryConditions(BaseBoundaryConditions):
     def _compute_ghost_states(self, t, q_boundary):
         """Compute the ghost states."""
 
-        '''
-        ghost_states = []
+        ghost_states = q_boundary
 
-
-        for i, BC in enumerate(self.boundary_conditions(t)):
+        for i in range(self.DG_vars.num_states):
             for edge, idx in zip(['left', 'right'], [0, -1]):
-                if BC[edge] is not None:
-                    ghost_states.append(
-                        {edge: -q_boundary[i, idx] + 2 * BC[edge]}
-                        )
-                else:
-                    ghost_states.append(
-                        {edge: q_boundary[i, idx]}
-                        )
-        '''
+                bc = self.boundary_conditions(t)[i][edge]
+                
+                if bc is not None:
+                    ghost_states[i, idx] = -q_boundary[i, idx] + 2 * bc
+            
 
-        q_left = self.boundary_conditions(t)[0]['left']
-
-        ghost_states = np.array([[
-            -q_boundary[0, 0] + 2 * q_left,
-            q_boundary[0, 1]
-            ]])
         return ghost_states
 
     def _compute_ghost_flux(self, ghost_states):
@@ -64,19 +52,13 @@ class DirichletBoundaryConditions(BaseBoundaryConditions):
         ghost_flux = self._compute_ghost_flux(ghost_states)
 
         # Compute numerical boundary flux
-        numerical_flux_left = self.numerical_flux(
-            q_inside = q_boundary[:, 0],
-            q_outside = ghost_states[:, 0],
-            flux_inside = flux_boundary[:, 0],
-            flux_outside = ghost_flux[:, 0],
-        )
-
-        numerical_flux_right = self.numerical_flux(
-            q_inside = q_boundary[:, -1],
-            q_outside = ghost_states[:, -1],
-            flux_inside = flux_boundary[:, -1],
-            flux_outside = ghost_flux[:, -1],
+        numerical_flux = self.numerical_flux(
+            q_inside = q_boundary,
+            q_outside = ghost_states,
+            flux_inside = flux_boundary,
+            flux_outside = ghost_flux,
+            on_boundary=True
         )
         
-        return numerical_flux_left[0:1], numerical_flux_right[-1:]
+        return numerical_flux[:, 0], numerical_flux[:, -1]
 
