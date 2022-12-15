@@ -1,5 +1,5 @@
 import numpy as np
-from discontinuous_galerkin.base_model import BaseModel
+from discontinuous_galerkin.base.base_model import BaseModel
 from discontinuous_galerkin.start_up_routines.start_up_1D import StartUp1D
 import matplotlib.pyplot as plt
 import pdb
