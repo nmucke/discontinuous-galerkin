@@ -105,7 +105,6 @@ class EulersEquations(BaseModel):
         flux[2] = (q[2] + p) * u
 
         return flux
-
     
     def source(self, q):
         """Compute the source."""
@@ -125,7 +124,6 @@ if __name__ == '__main__':
         'alpha': 0.0,
     }
 
-    '''
     stabilizer_type = 'slope_limiter'
     stabilizer_params = {
         'second_derivative_upper_bound': 1e-8,
@@ -136,8 +134,9 @@ if __name__ == '__main__':
         'num_modes_to_filter': 0,
         'filter_order': 6,
     }
+    '''
 
-    time_integrator_type = 'SSPRK'
+    time_integrator_type = 'implicit_euler'
     time_integrator_params = {
     }
 
@@ -145,12 +144,12 @@ if __name__ == '__main__':
     num_states=3
 
     error = []
-    conv_list = [5]
+    conv_list = [1]
     num_DOFs = []
     for polynomial_order in conv_list:
 
         #polynomial_order=8
-        num_elements=300
+        num_elements=200
 
         num_DOFs.append((polynomial_order+1)*num_elements)
 

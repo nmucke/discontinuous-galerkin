@@ -5,7 +5,6 @@ from discontinuous_galerkin.numerical_fluxes.numerical_flux import get_numerical
 from discontinuous_galerkin.time_integrators.time_integrator import get_time_integrator
 from discontinuous_galerkin.boundary_conditions.boundary_conditions import get_boundary_conditions
 
-
 import matplotlib.pyplot as plt
 
 from abc import abstractmethod
@@ -165,6 +164,7 @@ class BaseModel():
                 )
         d_flux = self.DG_vars.nx * (flux[:, self.DG_vars.vmapM] - numerical_flux)
 
+        # Reshape the flux and source terms
         d_flux = d_flux.reshape(
             (self.DG_vars.num_states, self.DG_vars.Nfp * self.DG_vars.Nfaces, self.DG_vars.K), 
             order='F'
@@ -173,10 +173,6 @@ class BaseModel():
             (self.DG_vars.num_states, self.DG_vars.Np, self.DG_vars.K), 
             order='F'
             )
-        #numerical_flux = numerical_flux.reshape(
-        #    (self.DG_vars.num_states, self.DG_vars.Nfp * self.DG_vars.Nfaces, self.DG_vars.K), 
-        #    order='F'
-        #    )
         source = source.reshape(
             (self.DG_vars.num_states, self.DG_vars.Np, self.DG_vars.K), 
             order='F'
@@ -186,9 +182,6 @@ class BaseModel():
         rhs = -np.multiply(self.DG_vars.rx, self.DG_vars.Dr @ flux) \
             + self.DG_vars.LIFT @ (np.multiply(self.DG_vars.Fscale, d_flux)) \
             + source
-        #rhs = np.multiply(self.DG_vars.rx, self.DG_vars.Dr @ flux) \
-        #    - self.DG_vars.LIFT @ (self.DG_vars.Fscale * numerical_flux) \
-        #    + source
 
         rhs = rhs.reshape(
             (self.DG_vars.num_states, self.DG_vars.Np * self.DG_vars.K), 
@@ -202,13 +195,6 @@ class BaseModel():
 
         This method solves the model and returns the solution.
         """
-
-        #num_steps = int(np.ceil((t_final - t) / self.time_integrator_params['step_size']))
-
-        # Preallocate solution
-        #sol = np.zeros(
-        #    (self.DG_vars.num_states, self.DG_vars.Np * self.DG_vars.K, num_steps)
-        #    )
         sol = []
         
         # Set initial condition
