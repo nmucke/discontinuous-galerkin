@@ -118,8 +118,7 @@ class GeneralizedSlopeLimiter(BaseStabilizer):
 
         states = []
         for i in range(self.DG_vars.num_states):
-
-            
+                        
             limited_state = self._SlopeLimitN(np.reshape(
                 q[i],
                 (self.DG_vars.Np, self.DG_vars.K),

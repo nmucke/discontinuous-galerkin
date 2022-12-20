@@ -122,7 +122,7 @@ if __name__ == '__main__':
     
     stabilizer_type = 'slope_limiter'
     stabilizer_params = {
-        'second_derivative_upper_bound': 1e-5,
+        'second_derivative_upper_bound': 1e-8,
     }
     '''
     stabilizer_type = 'filter'
@@ -132,7 +132,7 @@ if __name__ == '__main__':
     }
     '''
 
-    time_integrator_type = 'implicit_euler'
+    time_integrator_type = 'SSPRK'
     time_integrator_params = {
     }
 
@@ -168,7 +168,7 @@ if __name__ == '__main__':
         init = eulers_DG.initial_condition(eulers_DG.DG_vars.x.flatten('F'))
 
         
-        sol, t_vec = eulers_DG.solve(t=0, q_init=init, t_final=0.002)
+        sol, t_vec = eulers_DG.solve(t=0, q_init=init, t_final=0.2)
 
         '''
         true_sol = lambda t: eulers_DG.initial_condition(
