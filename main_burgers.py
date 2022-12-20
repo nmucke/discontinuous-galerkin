@@ -59,7 +59,7 @@ class BurgersEquation(BaseModel):
         
         return BCs
     
-    def wave_speed(self, q):
+    def velocity(self, q):
         """Compute the wave speed."""
 
         return 2*q

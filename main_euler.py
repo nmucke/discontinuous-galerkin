@@ -80,16 +80,12 @@ class EulersEquations(BaseModel):
         
         return BCs
     
-    def wave_speed(self, q):
+    def velocity(self, q):
         """Compute the wave speed."""
 
         p = (self.gamma-1)*(q[2] - 0.5*q[1]*q[1]/q[0])
 
-        c = np.sqrt(self.gamma*p/q[0])
-
-        c += abs(q[1]/q[0])
-
-        return c
+        return np.sqrt(self.gamma*p/q[0]) + abs(q[1]/q[0])
         
     def flux(self, q):
         """Compute the flux."""
@@ -123,10 +119,10 @@ if __name__ == '__main__':
     numerical_flux_params = {
         'alpha': 0.0,
     }
-
+    
     stabilizer_type = 'slope_limiter'
     stabilizer_params = {
-        'second_derivative_upper_bound': 1e-8,
+        'second_derivative_upper_bound': 1e-5,
     }
     '''
     stabilizer_type = 'filter'
@@ -149,7 +145,7 @@ if __name__ == '__main__':
     for polynomial_order in conv_list:
 
         #polynomial_order=8
-        num_elements=200
+        num_elements=500
 
         num_DOFs.append((polynomial_order+1)*num_elements)
 
@@ -172,7 +168,7 @@ if __name__ == '__main__':
         init = eulers_DG.initial_condition(eulers_DG.DG_vars.x.flatten('F'))
 
         
-        sol, t_vec = eulers_DG.solve(t=0, q_init=init, t_final=0.2)
+        sol, t_vec = eulers_DG.solve(t=0, q_init=init, t_final=0.002)
 
         '''
         true_sol = lambda t: eulers_DG.initial_condition(

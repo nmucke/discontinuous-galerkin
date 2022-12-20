@@ -59,7 +59,7 @@ class BaseModel():
             stabilizer_params=stabilizer_params,
         )
 
-        numerical_flux_params['C'] = self.wave_speed
+        numerical_flux_params['C'] = self.velocity
         # Initialize the numerical flux
         self.numerical_flux = get_numerical_flux(
             DG_vars=self.DG_vars,
@@ -206,10 +206,10 @@ class BaseModel():
         #for i in range(num_steps - 1):
         while t < t_final:
             
-            C = np.max(self.wave_speed(sol[-1]))
-            CFL=0.25
+            C = np.max(self.velocity(sol[-1]))
+            CFL=1.
             dt= CFL/C*self.DG_vars.dx
-            step_size = .5*dt
+            step_size = .1*dt
 
             sol_, t = self.time_integrator(
                 t=t_vec[-1], 
