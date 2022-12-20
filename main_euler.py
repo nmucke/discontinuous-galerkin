@@ -165,6 +165,8 @@ if __name__ == '__main__':
             numerical_flux_params=numerical_flux_params,
             )
 
+        pdb.set_trace()
+
         init = eulers_DG.initial_condition(eulers_DG.DG_vars.x.flatten('F'))
 
         

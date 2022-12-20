@@ -28,5 +28,3 @@ class BaseBoundaryConditions():
 
     def __call__(self, **kwargs):
         return self.apply_boundary_conditions(**kwargs)
-
-

@@ -39,6 +39,12 @@ class BaseModel():
         ):
         """Initialize base model class.""" 
 
+        self.polynomial_type = polynomial_type
+        self.polynomial_order = polynomial_order
+        self.num_states = num_states
+        self.num_elements = num_elements
+
+
         self.time_integrator_params = time_integrator_params       
 
         # Initialize the start-up routine        
@@ -91,12 +97,12 @@ class BaseModel():
         """ Description of the model. """
 
         output = "BaseModel: \n"
-        output += f"xmin: {self.xmin} \n"
-        output += f"xmax: {self.xmax} \n"
-        output += f"Number of elements: {self.K} \n"
-        output += f"Polynomial order: {self.N} \n"
-        output += f"Polynomial type: {self.poly_type} \n"
-        output += f"Stabilizer: {self.stabilizer_type} \n"
+        output += f"xmin: {self.DG_vars.xmin} \n"
+        output += f"xmax: {self.DG_vars.xmax} \n"
+        output += f"Number of elements: {self.DG_vars.K} \n"
+        output += f"Polynomial order: {self.DG_vars.N} \n"
+        #output += f"Polynomial type: {self.poly_type} \n"
+        #output += f"Stabilizer: {self.stabilizer_type} \n"
         #output += f"Time stepping: {self.time_stepper} \n"
         
         return output
@@ -133,7 +139,8 @@ class BaseModel():
 
         raise NotImplementedError
     
-    def wave_speed(self, q):
+    @abstractmethod
+    def velocity(self, q):
         """Compute the wave speed."""
 
         raise NotImplementedError
@@ -207,7 +214,7 @@ class BaseModel():
         while t < t_final:
             
             C = np.max(self.velocity(sol[-1]))
-            CFL=1.
+            CFL=.1
             dt= CFL/C*self.DG_vars.dx
             step_size = .1*dt
 

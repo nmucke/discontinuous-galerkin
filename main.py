@@ -64,7 +64,7 @@ class AdvectionEquation(BaseModel):
 
         return 2*np.pi*q
     
-    def wave_speed(self, q):
+    def velocity(self, q):
         return 2*np.pi
 
     def source(self, q):
@@ -112,7 +112,7 @@ if __name__ == '__main__':
     for polynomial_order in conv_list:
 
         #polynomial_order=15
-        num_elements=5
+        num_elements=15
 
         num_DOFs.append((polynomial_order+1)*num_elements)
 
