@@ -107,7 +107,7 @@ if __name__ == '__main__':
     num_states=1
 
     error = []
-    conv_list = [2, 4, 8, 16]
+    conv_list = [2]
     num_DOFs = []
     for polynomial_order in conv_list:
 

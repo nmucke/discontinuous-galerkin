@@ -1,10 +1,7 @@
 import numpy as np
 from discontinuous_galerkin.start_up_routines.start_up_1D import StartUp1D
-from discontinuous_galerkin.stabilizers.stabilizer import get_stabilizer
-from discontinuous_galerkin.numerical_fluxes.numerical_flux import get_numerical_flux
-from discontinuous_galerkin.time_integrators.time_integrator import get_time_integrator
-from discontinuous_galerkin.boundary_conditions.boundary_conditions import get_boundary_conditions
-
+import discontinuous_galerkin.factories as factories
+from discontinuous_galerkin.time_integrators.CFL import get_CFL_step_size
 import matplotlib.pyplot as plt
 
 from abc import abstractmethod
@@ -59,22 +56,26 @@ class BaseModel():
 
 
         # Initialize the stabilizer
-        self.stabilizer = get_stabilizer(
+        self.stabilizer = factories.get_stabilizer(
             DG_vars=self.DG_vars,
             stabilizer_type=stabilizer_type,
             stabilizer_params=stabilizer_params,
         )
 
-        numerical_flux_params['C'] = self.velocity
         # Initialize the numerical flux
-        self.numerical_flux = get_numerical_flux(
+        if numerical_flux_params is None:
+            numerical_flux_params = {}
+
+        numerical_flux_params['C'] = self.velocity
+
+        self.numerical_flux = factories.get_numerical_flux(
             DG_vars=self.DG_vars,
             numerical_flux_type=numerical_flux_type,
             numerical_flux_params=numerical_flux_params,
         )
 
         # Initialize the boundary conditions
-        self.BCs = get_boundary_conditions(
+        self.BCs = factories.get_boundary_conditions(
             DG_vars=self.DG_vars,
             BC_types=BC_types,
             boundary_conditions=self.boundary_conditions,
@@ -83,10 +84,12 @@ class BaseModel():
             )
 
         # Initialize the time integrastor
-        if time_integrator_type == 'SSPRK':
-            time_integrator_params['stabilizer'] = self.stabilizer
+        if time_integrator_params is None:
+            time_integrator_params = {}
+            
+        time_integrator_params['stabilizer'] = self.stabilizer
 
-        self.time_integrator = get_time_integrator(
+        self.time_integrator = factories.get_time_integrator(
             DG_vars=self.DG_vars,
             time_integrator_type=time_integrator_type,
             time_integrator_params=time_integrator_params,
@@ -209,14 +212,16 @@ class BaseModel():
 
         t_vec = [t]
 
-        # Solve the model
-        #for i in range(num_steps - 1):
         while t < t_final:
-            
-            C = np.max(self.velocity(sol[-1]))
-            CFL=.1
-            dt= CFL/C*self.DG_vars.dx
-            step_size = .1*dt
+
+            step_size = get_CFL_step_size(
+                velocity=self.velocity(sol[-1]), 
+                min_dx=self.DG_vars.dx, 
+                CFL=.1
+                )
+
+            if t + step_size > t_final:
+                step_size = t_final - t
 
             sol_, t = self.time_integrator(
                 t=t_vec[-1], 

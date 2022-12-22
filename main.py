@@ -98,8 +98,7 @@ if __name__ == '__main__':
     }
 
     time_integrator_type = 'SSPRK'
-    time_integrator_params = {
-    }
+    time_integrator_params = None
 
     polynomial_type='legendre'
     num_states=1

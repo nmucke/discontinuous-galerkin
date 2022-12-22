@@ -127,7 +127,7 @@ if __name__ == '__main__':
     '''
     stabilizer_type = 'filter'
     stabilizer_params = {
-        'num_modes_to_filter': 0,
+        'num_modes_to_filter': 10,
         'filter_order': 6,
     }
     '''
@@ -140,12 +140,12 @@ if __name__ == '__main__':
     num_states=3
 
     error = []
-    conv_list = [1]
+    conv_list = [2]
     num_DOFs = []
     for polynomial_order in conv_list:
 
         #polynomial_order=8
-        num_elements=500
+        num_elements=150
 
         num_DOFs.append((polynomial_order+1)*num_elements)
 
@@ -165,7 +165,6 @@ if __name__ == '__main__':
             numerical_flux_params=numerical_flux_params,
             )
 
-        pdb.set_trace()
 
         init = eulers_DG.initial_condition(eulers_DG.DG_vars.x.flatten('F'))
 

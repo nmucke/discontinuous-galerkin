@@ -9,7 +9,13 @@ class DirichletBoundaryConditions(BaseBoundaryConditions):
 
     This class contains the functionality for the Dirichlet boundary conditions.
     """
-    def __init__(self, DG_vars, boundary_conditions, flux, numerical_flux):
+    def __init__(
+        self, 
+        DG_vars, 
+        boundary_conditions, flux, 
+        numerical_flux,
+        **args
+        ):
         """Initialize the class."""
 
         super().__init__()

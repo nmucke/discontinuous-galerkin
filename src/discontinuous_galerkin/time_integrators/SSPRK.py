@@ -7,7 +7,7 @@ import matplotlib.pyplot as plt
 class SSPRK(BaseTimeIntegrator):
     """Strong Stability Preserving Runge-Kutta time integrator class."""    
 
-    def __init__(self, DG_vars, stabilizer):
+    def __init__(self, DG_vars, stabilizer, **kwargs):
 
         self.time = 0
         self.DG_vars = DG_vars
