@@ -6,19 +6,32 @@ from autograd import grad, jacobian
 
 import matplotlib.pyplot as plt
 
+
+from scipy.optimize import newton_krylov
+
 class NewtonSolver(object):
         """Newton solver for nonlinear problems."""    
-        def __init__(self, ):
-            pass
+        def __init__(
+            self,
+            solver='krylov',
+            max_newton_iter=200,
+            newton_tol=1e-5,
+            reuse_jacobian=True
+            ):
+            
+            self.max_newton_iter = max_newton_iter
+            self.newton_tol = newton_tol
+            self.solver = solver
 
-        def _compute_jacobian(self, f, x, dx=1e-12):
+            self.reuse_jacobian = reuse_jacobian
+            self.num_jacobian_reuses = 5
+            self.jacobian_reuse_counter = 0
+
+        def _compute_jacobian(self, func, x, dx=1e-8):
             """Compute the Jacobian of a function."""
-
-            x = x.flatten('F')
-
             n = len(x)
-            func = f(x)
-            jac = np.zeros((n, n))
+            f = func(x)
+            self.jac = np.zeros((n, n))
 
             Dx = np.abs(x) * dx
             Dx[x==0] = dx
@@ -32,36 +45,70 @@ class NewtonSolver(object):
 
             jac = (f_plus - func[:, None])/Dx
             '''
-            #Dx_diag = np.diag(Dx)
-            #x_plus = np.zeros((n, n))
             for j in range(n):  # through columns to allow for vector addition
                 x_plus = x.copy()
-                x_plus[j] = x_plus[j] + Dx[j]
-                #jac[:, j] = (f(x + Dx_diag[:,j]) - func)/Dx[j]
-                jac[:, j] = (f(x_plus) - func)/Dx[j]
-                #jac[:, j] = (f_plus[:,j] - func)/Dx[j]
-            return jac
+                x_plus[j] += Dx[j]
+                self.jac[:, j] = (func(x_plus) - f)/Dx[j]
+            
+            return self.jac
 
-        def _compute_residual(self, q, t, step_size):
+        def _compute_residual(self, func, q):
             """Compute the residual of the nonlinear problem."""
-            
-            # Compute the right hand side
-            rhs = self.rhs(t, q)
-            
-            # Compute the residual
-            residual = q - step_size*rhs
-            
-            return residual
+                        
+            return func(q)
         
-        def _compute_update(self, q, t, step_size):
+        def _solve_krylov(self, func, q):
+
             # Compute the Jacobian
-            jacobian = self._compute_jacobian(q, t, step_size)
+
+            return q
+        
+        def _solve_direct(self, func, q):
+            """Solve the nonlinear problem using a direct solver."""
+
+            # Compute the Jacobian
+            if self.reuse_jacobian and self.jacobian_reuse_counter == 0:
+                self.jac = self._compute_jacobian(func, q)
+
+            if self.reuse_jacobian and self.jacobian_reuse_counter < self.num_jacobian_reuses:
+                jacobian = self.jac
+                self.jacobian_reuse_counter += 1
+            else:
+                jacobian = self._compute_jacobian(func, q)
+                self.jacobian_reuse_counter = 0
             
-            # Compute the residual
-            residual = self._compute_residual(q, t, step_size)
+            for _ in range(self.max_newton_iter):
+                # Compute the residual
+                residual = -self._compute_residual(func, q)
+                
+                # Compute the update
+                delta_q = np.linalg.solve(jacobian, residual)
+                
+                # Update the solution
+                q = q + delta_q
+                
+                # Check for convergence
+                if np.max(np.abs(delta_q)) < self.newton_tol:
+                    return q
             
-            # Compute the update
-            update = np.linalg.solve(jacobian, residual)
-            
-            return update
-    
+            raise Exception('Newton solver did not converge.')
+        
+        def _solve_krylov(self, func, q):
+            """Solve the nonlinear problem using a Krylov solver."""
+
+            q = newton_krylov(
+                F = func,
+                xin = q, 
+                f_tol=self.newton_tol, maxiter=self.max_newton_iter
+                )
+
+            return q
+
+        def solve(self, func, q):
+
+            if self.solver == 'direct':
+                return self._solve_direct(func, q)
+            elif self.solver == 'krylov':
+                return self._solve_krylov(func, q)
+            else:
+                raise Exception('Unknown solver: {}'.format(self.solver))

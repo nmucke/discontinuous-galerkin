@@ -220,10 +220,9 @@ class BaseModel():
                 CFL=.1
                 )
 
-            step_size = 0.25
+            step_size = 0.0001
 
             if t + step_size - 1e-1 > t_final:
-                pdb.set_trace()
                 step_size = t_final - t
             
             sol_, t = self.time_integrator(

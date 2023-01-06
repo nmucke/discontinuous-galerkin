@@ -136,6 +136,11 @@ if __name__ == '__main__':
 
     time_integrator_type = 'implicit_euler'
     time_integrator_params = {
+        'newton_params':{
+            'solver': 'direct',
+            'max_newton_iter': 200,
+            'newton_tol': 1e-5
+            }
     }
 
     polynomial_type='legendre'
