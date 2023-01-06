@@ -67,7 +67,7 @@ class AdvectionEquation(BaseModel):
     def velocity(self, q):
         return 2*np.pi
 
-    def source(self, q):
+    def source(self, t, q):
         """Compute the source."""
 
         return np.zeros((self.DG_vars.num_states,self.DG_vars.Np*self.DG_vars.K))
@@ -98,7 +98,14 @@ if __name__ == '__main__':
     }
 
     time_integrator_type = 'implicit_euler'
-    time_integrator_params = None
+    time_integrator_params = {
+        'step_size': 0.01,
+        'newton_params':{
+            'solver': 'krylov',
+            'max_newton_iter': 200,
+            'newton_tol': 1e-5
+            }
+    }
 
     polynomial_type='legendre'
     num_states=1
@@ -111,7 +118,7 @@ if __name__ == '__main__':
     for polynomial_order in conv_list:
 
         #polynomial_order=15
-        num_elements=15
+        num_elements=50
 
         num_DOFs.append((polynomial_order+1)*num_elements)
 

@@ -6,40 +6,44 @@ import pdb
 from matplotlib.animation import FuncAnimation
 import time
 
+'''
+xmin=0.,
+xmax=1.,
+num_elements=10,
+polynomial_order=5,
+polynomial_type='legendre',
+num_states=1,
+BCs={'type': 'dirichlet'},
+stabilizer_type=None, 
+stabilizer_params=None,
+time_integrator_type='implicit_euler',
+time_integrator_params=None,
+numerical_flux_type='lax_friedrichs',
+numerical_flux_params=None,
+
+
+    xmin=xmin,
+    xmax=xmax,
+    num_elements=num_elements,
+    polynomial_order=polynomial_order,
+    polynomial_type=polynomial_type,
+    num_states=num_states,
+    BC_types=BCs,
+    stabilizer_type=stabilizer_type, 
+    stabilizer_params=stabilizer_params,
+    time_integrator_type=time_integrator_type,
+    time_integrator_params=time_integrator_params,
+    numerical_flux_type=numerical_flux_type,
+    numerical_flux_params=numerical_flux_params,
+'''
 class EulersEquations(BaseModel):
     """Advection equation model class."""
 
     def __init__(
         self, 
-        xmin=0.,
-        xmax=1.,
-        num_elements=10,
-        polynomial_order=5,
-        polynomial_type='legendre',
-        num_states=1,
-        BC_types='dirichlet',
-        stabilizer_type=None, 
-        stabilizer_params=None,
-        time_integrator_type='implicit_euler',
-        time_integrator_params=None,
-        numerical_flux_type='lax_friedrichs',
-        numerical_flux_params=None,
+        **kwargs
         ):
-        super().__init__(
-            xmin=xmin,
-            xmax=xmax,
-            num_elements=num_elements,
-            polynomial_order=polynomial_order,
-            polynomial_type=polynomial_type,
-            num_states=num_states,
-            BC_types=BC_types,
-            stabilizer_type=stabilizer_type, 
-            stabilizer_params=stabilizer_params,
-            time_integrator_type=time_integrator_type,
-            time_integrator_params=time_integrator_params,
-            numerical_flux_type=numerical_flux_type,
-            numerical_flux_params=numerical_flux_params,
-            )
+        super().__init__(**kwargs)
 
         self.gamma = 1.4
     
@@ -82,6 +86,48 @@ class EulersEquations(BaseModel):
         
         return BCs
     
+    def eigen(self, q):
+        """Compute the eigenvalues."""
+
+        u = q[1]/q[0]
+        p = (self.gamma-1)*(q[2] - 0.5*q[0]*u*u)
+        c = np.sqrt(self.gamma*p/q[0])
+
+        H = c*c/(self.gamma-1) + 0.5*u*u
+
+        lambda_1 = u - c
+        lambda_2 = u
+        lambda_3 = u + c
+
+        D = np.diag(np.array([lambda_1, lambda_2, lambda_3]))
+
+        R = np.zeros((self.DG_vars.num_states, self.DG_vars.num_states))
+
+        R[:, 0] = np.array([1.0, u - c, H - u*c])
+        R[:, 1] = np.array([1.0, u, 0.5*u*u])
+        R[:, 2] = np.array([1.0, u + c, H + u*c])
+
+
+        L = np.zeros((self.DG_vars.num_states, self.DG_vars.num_states))
+
+        L[0, :] = 0.5/c/c * np.array([
+            (2*c + u*(self.gamma-1)) * u/2,
+            - c - u*(self.gamma-1),
+            self.gamma-1
+            ])
+        L[1, :] = 1/c/c * np.array([
+            c*c - (self.gamma-1)*u*u/2,
+            (self.gamma-1)*u,
+            -(self.gamma - 1)
+        ])
+        L[2, :] = 0.5/c/c * np.array([
+            -(2*c - u*(self.gamma-1)) * u/2,
+            c - u*(self.gamma-1),
+            self.gamma-1
+        ])
+
+        return D, L, R
+        
     def velocity(self, q):
         """Compute the wave speed."""
 
@@ -104,7 +150,7 @@ class EulersEquations(BaseModel):
 
         return flux
     
-    def source(self, q):
+    def source(self, t, q):
         """Compute the source."""
 
         return np.zeros((self.DG_vars.num_states,self.DG_vars.Np*self.DG_vars.K))
@@ -115,12 +161,21 @@ if __name__ == '__main__':
     xmin = 0.
     xmax = 1
 
-    BC_types = 'dirichlet'
+    BC_params = {
+        'type':'dirichlet',
+        'numerical_flux': 'lax_friedrichs',
+    }
 
+    numerical_flux_type = 'roe'
+    numerical_flux_params = {
+    }
+    
+    '''
     numerical_flux_type = 'lax_friedrichs'
     numerical_flux_params = {
         'alpha': 0.0,
     }
+    '''
     
     stabilizer_type = 'slope_limiter'
     stabilizer_params = {
@@ -136,8 +191,9 @@ if __name__ == '__main__':
 
     time_integrator_type = 'implicit_euler'
     time_integrator_params = {
+        'step_size': 0.0001,
         'newton_params':{
-            'solver': 'direct',
+            'solver': 'krylov',
             'max_newton_iter': 200,
             'newton_tol': 1e-5
             }
@@ -147,73 +203,91 @@ if __name__ == '__main__':
     num_states=3
 
     error = []
-    conv_list = [2]
     num_DOFs = []
-    for polynomial_order in conv_list:
+    polynomial_order=8
+    num_elements=25
 
-        #polynomial_order=8
-        num_elements=150
+    num_DOFs.append((polynomial_order+1)*num_elements)
 
-        num_DOFs.append((polynomial_order+1)*num_elements)
+    eulers_DG = EulersEquations(
+        xmin=xmin,
+        xmax=xmax,
+        num_elements=num_elements,
+        polynomial_order=polynomial_order,
+        polynomial_type=polynomial_type,
+        num_states=num_states,
+        BC_params=BC_params,
+        stabilizer_type=stabilizer_type, 
+        stabilizer_params=stabilizer_params,
+        time_integrator_type=time_integrator_type,
+        time_integrator_params=time_integrator_params, 
+        numerical_flux_type=numerical_flux_type,
+        numerical_flux_params=numerical_flux_params,
+        )
 
-        eulers_DG = EulersEquations(
-            xmin=xmin,
-            xmax=xmax,
-            num_elements=num_elements,
-            polynomial_order=polynomial_order,
-            polynomial_type=polynomial_type,
-            num_states=num_states,
-            BC_types=BC_types,
-            stabilizer_type=stabilizer_type, 
-            stabilizer_params=stabilizer_params,
-            time_integrator_type=time_integrator_type,
-            time_integrator_params=time_integrator_params, 
-            numerical_flux_type=numerical_flux_type,
-            numerical_flux_params=numerical_flux_params,
-            )
+    init = eulers_DG.initial_condition(eulers_DG.DG_vars.x.flatten('F'))
 
-
-        init = eulers_DG.initial_condition(eulers_DG.DG_vars.x.flatten('F'))
-
-        
-        t1 = time.time()
-        sol, t_vec = eulers_DG.solve(t=0, q_init=init, t_final=0.2)
-        t2 = time.time()
-        print('Time to solve: ', t2-t1)
-
-        '''
-        true_sol = lambda t: eulers_DG.initial_condition(
-            eulers_DG.DG_vars.x.flatten('F') - 3*t
-            )
-        true_sol_array = np.zeros(
-            (eulers_DG.DG_vars.num_states, 
-            eulers_DG.DG_vars.Np * eulers_DG.DG_vars.K, 
-            len(t_vec))
-            )
-        for i in range(len(t_vec)):
-            true_sol_array[:, :, i] = true_sol(t_vec[i])
-            
-        l2_error = np.linalg.norm(sol - true_sol_array) / np.linalg.norm(true_sol_array)
     
-        error.append(l2_error)
-        '''
-    '''
-    plt.figure()
-    plt.loglog(num_DOFs, error, '.-', label='error', linewidth=2, markersize=10)
-    plt.loglog(num_DOFs, [10**(-i) for i in range(len(num_DOFs))], label='slope 1', linewidth=2)
-    plt.loglog(num_DOFs, [10**(-i*2) for i in range(len(num_DOFs))], label='slope 2', linewidth=2)
-    plt.loglog(num_DOFs, [10**(-i*3) for i in range(len(num_DOFs))], label='slope 3', linewidth=2)
-    plt.legend()
-    plt.grid()
-    plt.show()
-    '''
+    t1 = time.time()
+    roe_sol, t_vec = eulers_DG.solve(t=0, q_init=init, t_final=0.2)
+    t2 = time.time()
+    print('Time to solve: ', t2-t1)
+
+    del eulers_DG
+
+    time_integrator_type = 'implicit_euler'
+    time_integrator_params = {
+        'step_size': 0.0001,
+        'newton_params':{
+            'solver': 'krylov',
+            'max_newton_iter': 200,
+            'newton_tol': 1e-5
+            }
+    }
+
+
+    numerical_flux_type = 'lax_friedrichs'
+    numerical_flux_params = {
+        'alpha': 0.0,
+    }
+
+    BC_params = {
+        'type':'dirichlet',
+        'numerical_flux': 'lax_friedrichs',
+    }
+    eulers_DG = EulersEquations(
+        xmin=xmin,
+        xmax=xmax,
+        num_elements=num_elements,
+        polynomial_order=polynomial_order,
+        polynomial_type=polynomial_type,
+        num_states=num_states,
+        BC_params=BC_params,
+        stabilizer_type=stabilizer_type, 
+        stabilizer_params=stabilizer_params,
+        time_integrator_type=time_integrator_type,
+        time_integrator_params=time_integrator_params, 
+        numerical_flux_type=numerical_flux_type,
+        numerical_flux_params=numerical_flux_params,
+        )
+
+
+    init = eulers_DG.initial_condition(eulers_DG.DG_vars.x.flatten('F'))
+
+    
+    t1 = time.time()
+    lax_sol, t_vec = eulers_DG.solve(t=0, q_init=init, t_final=0.2)
+    t2 = time.time()
+    print('Time to solve: ', t2-t1)
 
     plt.figure()
     plt.plot(eulers_DG.DG_vars.x.flatten('F'), init[0], label='initial rho', linewidth=1)
     plt.plot(eulers_DG.DG_vars.x.flatten('F'), init[1]/init[0], label='initial u', linewidth=1)
     #plt.plot(eulers_DG.DG_vars.x.flatten('F'), true_sol(t_vec[-1])[0], label='true', linewidth=3)
-    plt.plot(eulers_DG.DG_vars.x.flatten('F'), sol[0, :, -1], label='rho', linewidth=2)
-    plt.plot(eulers_DG.DG_vars.x.flatten('F'), sol[1, :, -1]/sol[0, :, -1], label='u', linewidth=2)
+    plt.plot(eulers_DG.DG_vars.x.flatten('F'), roe_sol[0, :, -1], label='Roe rho', linewidth=2)
+    plt.plot(eulers_DG.DG_vars.x.flatten('F'), roe_sol[1, :, -1]/roe_sol[0, :, -1], label=' Roe u', linewidth=2)
+    plt.plot(eulers_DG.DG_vars.x.flatten('F'), lax_sol[0, :, -1], label='Lax rho', linewidth=2)
+    plt.plot(eulers_DG.DG_vars.x.flatten('F'), lax_sol[1, :, -1]/roe_sol[0, :, -1], label='Lax u', linewidth=2)
     plt.grid()
     plt.legend()
     plt.show()

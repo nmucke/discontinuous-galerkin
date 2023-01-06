@@ -20,6 +20,7 @@ class PipeflowEquations(BaseModel):
         polynomial_type='legendre',
         num_states=1,
         BC_types='dirichlet',
+        steady_state=None,
         stabilizer_type=None, 
         stabilizer_params=None,
         time_integrator_type='implicit_euler',
@@ -35,6 +36,7 @@ class PipeflowEquations(BaseModel):
             polynomial_type=polynomial_type,
             num_states=num_states,
             BC_types=BC_types,
+            steady_state=steady_state,
             stabilizer_type=stabilizer_type, 
             stabilizer_params=stabilizer_params,
             time_integrator_type=time_integrator_type,
@@ -130,19 +132,17 @@ class PipeflowEquations(BaseModel):
 
         return flux
     
-    def source(self, q):
+    def source(self, t, q):
         """Compute the source."""
 
         s = np.zeros((self.DG_vars.num_states,self.DG_vars.Np*self.DG_vars.K))
 
-        x = pipe_DG.DG_vars.x.flatten('F')
-        #point_source = np.exp(-(x-500)**2 / (2*25**2))
-
-        
-        #point_source = 1/width * np.heaviside(500, x/width)
-        width = 25
-        point_source = 1/width * (np.heaviside(x-1000, 1) - np.heaviside(x-1000-width, 1))
-
+        point_source = np.zeros((self.DG_vars.Np*self.DG_vars.K))
+        if t>0:
+            x = pipe_DG.DG_vars.x.flatten('F')
+            width = 50
+            point_source = (np.heaviside(x-1000 + width/2, 1) - np.heaviside(x-1000-width/2, 1))
+            point_source *= 1/width
 
         rho = q[0]/self.A
         p = self.density_to_pressure(rho)
@@ -160,6 +160,14 @@ if __name__ == '__main__':
     xmax = 2000
 
     BC_types = 'dirichlet'
+
+    steady_state = {
+        'newton_params':{
+            'solver': 'direct',
+            'max_newton_iter': 200,
+            'newton_tol': 1e-5
+        }
+    }
 
     numerical_flux_type = 'lax_friedrichs'
     numerical_flux_params = {
@@ -179,7 +187,14 @@ if __name__ == '__main__':
     }
 
     time_integrator_type = 'implicit_euler'
-    time_integrator_params = {}
+    time_integrator_params = {
+        'step_size': 0.1,
+        'newton_params':{
+            'solver': 'krylov',
+            'max_newton_iter': 200,
+            'newton_tol': 1e-5
+            }
+        }
 
     polynomial_type='legendre'
     num_states=2
@@ -190,7 +205,7 @@ if __name__ == '__main__':
     for polynomial_order in conv_list:
 
         #polynomial_order=8
-        num_elements=200
+        num_elements=100
 
         num_DOFs.append((polynomial_order+1)*num_elements)
 
@@ -202,6 +217,7 @@ if __name__ == '__main__':
             polynomial_type=polynomial_type,
             num_states=num_states,
             BC_types=BC_types,
+            steady_state=steady_state,
             stabilizer_type=stabilizer_type, 
             stabilizer_params=stabilizer_params,
             time_integrator_type=time_integrator_type,
@@ -214,7 +230,7 @@ if __name__ == '__main__':
         init = pipe_DG.initial_condition(pipe_DG.DG_vars.x.flatten('F'))
 
         t1 = time.time()
-        sol, t_vec = pipe_DG.solve(t=0, q_init=init, t_final=64.0)
+        sol, t_vec = pipe_DG.solve(t=0, q_init=init, t_final=25.0)
         t2 = time.time()
         print('time to solve: ', t2-t1)
 
@@ -229,7 +245,7 @@ if __name__ == '__main__':
     plt.show()
 
     u = sol[1]/sol[0]#sol[0]/pipe_DG.A## #
-    u = u[:, 1:-1:2]
+    u = u[:, 1:-1]
 
     fig = plt.figure()
     ax = plt.axes(xlim=(0, xmax), ylim=(u.min(), u.max()))

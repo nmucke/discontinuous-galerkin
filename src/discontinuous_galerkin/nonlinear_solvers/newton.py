@@ -99,7 +99,8 @@ class NewtonSolver(object):
             q = newton_krylov(
                 F = func,
                 xin = q, 
-                f_tol=self.newton_tol, maxiter=self.max_newton_iter
+                f_tol=self.newton_tol, 
+                maxiter=self.max_newton_iter
                 )
 
             return q
@@ -111,4 +112,4 @@ class NewtonSolver(object):
             elif self.solver == 'krylov':
                 return self._solve_krylov(func, q)
             else:
-                raise Exception('Unknown solver: {}'.format(self.solver))
+                raise Exception(f'Unknown solver: {self.solver}')

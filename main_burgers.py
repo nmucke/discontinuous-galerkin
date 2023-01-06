@@ -70,7 +70,7 @@ class BurgersEquation(BaseModel):
 
         return q*q
     
-    def source(self, q):
+    def source(self, t, q):
         """Compute the source."""
 
         return np.zeros((self.DG_vars.num_states,self.DG_vars.Np*self.DG_vars.K))
@@ -88,7 +88,6 @@ if __name__ == '__main__':
         'alpha': 0.5,
     }
 
-    '''
     stabilizer_type = 'slope_limiter'
     stabilizer_params = {
         'second_derivative_upper_bound': 1e1,
@@ -99,9 +98,11 @@ if __name__ == '__main__':
         'num_modes_to_filter': 0,
         'filter_order': 6,
     }
+    '''
 
-    time_integrator_type = 'implicit_euler'
+    time_integrator_type = 'SSPRK'
     time_integrator_params = {
+        'step_size': 0.001,
         'newton_params':{
             'solver': 'direct',
             'max_newton_iter': 200,
@@ -118,7 +119,7 @@ if __name__ == '__main__':
     for polynomial_order in conv_list:
 
         #polynomial_order=8
-        num_elements = 500
+        num_elements = 250
 
         num_DOFs.append((polynomial_order+1)*num_elements)
 

@@ -8,8 +8,6 @@ class LaxFriedrichsFlux(BaseNumericalFlux):
     Lax-Friedrichs numerical flux class.
     
     This class contains the functionality for the Lax-Friedrichs numerical flux. 
-    It is not intended to be used directly, but rather as a base class for other
-    numerical fluxes.
     """
     def __init__(self, DG_vars, alpha=0.5, C=lambda q: np.abs(q)):
         """Initialize the class."""
@@ -24,17 +22,17 @@ class LaxFriedrichsFlux(BaseNumericalFlux):
             [self.DG_vars.nx[self.DG_vars.mapI], self.DG_vars.nx[self.DG_vars.mapO]]
         )
     
-    def average_operator(self, q_inside, q_outside):
+    def _average_operator(self, q_inside, q_outside):
         """Compute the average operator."""
 
         return (q_inside + q_outside) / 2
 
-    def jump_operator(self, q_inside, q_outside):
+    def _jump_operator(self, q_inside, q_outside):
         """Compute the jump operator."""
 
         return self.DG_vars.nx * (q_inside - q_outside)
     
-    def boundary_jump_operator(self, q_inside, q_outside):
+    def _boundary_jump_operator(self, q_inside, q_outside):
         """Compute the jump operator on the boundary."""
 
         return self.nx_boundary * (q_inside - q_outside)
@@ -50,13 +48,13 @@ class LaxFriedrichsFlux(BaseNumericalFlux):
         """Compute the numerical flux."""
 
         # Compute the average of the fluxes
-        flux_average = self.average_operator(flux_inside, flux_outside)
+        flux_average = self._average_operator(flux_inside, flux_outside)
 
         # Compute the jump of the states
         if on_boundary:
-            q_jump = self.boundary_jump_operator(q_inside, q_outside)
+            q_jump = self._boundary_jump_operator(q_inside, q_outside)
         else:
-            q_jump = self.jump_operator(q_inside, q_outside)
+            q_jump = self._jump_operator(q_inside, q_outside)
 
         # Compute the velocity
         C_inside = self.C(q_inside)

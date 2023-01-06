@@ -39,6 +39,7 @@ class ImplicitEuler(BaseTimeIntegrator):
                 order='F'
                 )
             ).flatten('F')
+        
         return (time_derivative - pde_rhs)
 
     def time_step(self, t, q, step_size, rhs):

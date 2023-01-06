@@ -1,12 +1,14 @@
 import numpy as np
+import matplotlib.pyplot as plt
+import pdb
+
+from abc import abstractmethod
+from tqdm import tqdm
+
 from discontinuous_galerkin.start_up_routines.start_up_1D import StartUp1D
 import discontinuous_galerkin.factories as factories
 from discontinuous_galerkin.time_integrators.CFL import get_CFL_step_size
-import matplotlib.pyplot as plt
-
-from abc import abstractmethod
-
-import pdb
+from discontinuous_galerkin.steady_state import compute_steady_state 
 
 
 #class BaseModel(StartUp1D, Stabilizer, NumericalFlux):
@@ -26,7 +28,8 @@ class BaseModel():
         polynomial_order=5,
         polynomial_type='legendre',
         num_states=1,
-        BC_types='dirichlet',
+        BC_params={'type': 'dirichlet'},
+        steady_state=None,
         stabilizer_type=None, 
         stabilizer_params=None,
         time_integrator_type='implicit_euler',
@@ -40,9 +43,8 @@ class BaseModel():
         self.polynomial_order = polynomial_order
         self.num_states = num_states
         self.num_elements = num_elements
-
-
         self.time_integrator_params = time_integrator_params       
+        self.steady_state = steady_state
 
         # Initialize the start-up routine        
         self.DG_vars = StartUp1D(
@@ -66,28 +68,70 @@ class BaseModel():
         if numerical_flux_params is None:
             numerical_flux_params = {}
 
-        numerical_flux_params['C'] = self.velocity
+        # Set the velocity for the Lax-Friedrichs flux
+        if numerical_flux_type == 'lax_friedrichs':
+            numerical_flux_params['C'] = self.velocity
+        if numerical_flux_type == 'roe':
+            if not getattr(self.eigen, '__isabstractmethod__', False):
+                numerical_flux_params['eigen'] = self.eigen
+            elif not getattr(self.system_jacobian, '__isabstractmethod__', False):
+                numerical_flux_params['system_jacobian'] = self.system_jacobian
+            else:
+                error_string = "The eigenvalues and eigenvectors must be implemented for the Roe flux. "
+                error_string += "Please implement the eigen() or system_jacobian() methods."
+                raise NotImplementedError(
+                    error_string
+                )
 
         self.numerical_flux = factories.get_numerical_flux(
             DG_vars=self.DG_vars,
             numerical_flux_type=numerical_flux_type,
             numerical_flux_params=numerical_flux_params,
         )
-
+        
         # Initialize the boundary conditions
+        if BC_params.get('numerical_flux') is None:
+            BC_params['numerical_flux'] = self.numerical_flux
+        else:
+            numerical_BC_flux_params = {}
+            if BC_params['numerical_flux'] == 'lax_friedrichs':
+                numerical_BC_flux_params['C'] = self.velocity
+            if BC_params['numerical_flux'] == 'roe':
+                if not getattr(self.eigen, '__isabstractmethod__', False):
+                    numerical_BC_flux_params['eigen'] = self.eigen
+                elif not getattr(self.system_jacobian, '__isabstractmethod__', False):
+                    numerical_BC_flux_params['system_jacobian'] = self.system_jacobian
+                else:
+                    error_string = "The eigenvalues and eigenvectors must be implemented for the Roe flux. "
+                    error_string += "Please implement the eigen() or system_jacobian() methods."
+                    raise NotImplementedError(
+                        error_string
+                    )
+        self.numerical_BC_flux = factories.get_numerical_flux(
+            DG_vars=self.DG_vars,
+            numerical_flux_type=BC_params['numerical_flux'],
+            numerical_flux_params=numerical_BC_flux_params,
+        )
+
         self.BCs = factories.get_boundary_conditions(
             DG_vars=self.DG_vars,
-            BC_types=BC_types,
+            BC_params=BC_params,
+            numerical_BC_flux=self.numerical_BC_flux,
             boundary_conditions=self.boundary_conditions,
             flux=self.flux,
-            numerical_flux=self.numerical_flux,
             )
 
-        # Initialize the time integrastor
+        # Initialize the time integrator
         if time_integrator_params is None:
             time_integrator_params = {}
+        if time_integrator_type == 'SSPRK':
+            self.step_size = get_CFL_step_size
+        else:
+            self.step_size = time_integrator_params['step_size']
+            time_integrator_params.pop('step_size', None)
             
         time_integrator_params['stabilizer'] = self.stabilizer
+        self.time_integrator_type = time_integrator_type
 
         self.time_integrator = factories.get_time_integrator(
             DG_vars=self.DG_vars,
@@ -112,6 +156,18 @@ class BaseModel():
 
     def __repr__(self):
         return self.__str__()
+
+    @abstractmethod
+    def eigen(self, q):
+        """Compute the eigenvalues and eigenvectors."""
+
+        raise NotImplementedError
+    
+    @abstractmethod
+    def system_jacobian(self, q):
+        """Compute the eigenvalues and eigenvectors."""
+
+        raise NotImplementedError
 
     @abstractmethod
     def flux(self, q):
@@ -163,7 +219,7 @@ class BaseModel():
             )
             
         # Compute the source term
-        source = self.source(q)
+        source = self.source(t, q)
 
         # Compute boundary conditions
         numerical_flux[:, self.DG_vars.mapI], numerical_flux[:, self.DG_vars.mapO] = \
@@ -206,21 +262,37 @@ class BaseModel():
         This method solves the model and returns the solution.
         """
         sol = []
+
+        # Compute the steady state solution
+        if self.steady_state is not None:
+            q_init = compute_steady_state(
+                q=q_init,
+                rhs=self.compute_rhs,
+                newton_params = self.steady_state['newton_params'],
+                DG_vars=self.DG_vars,
+            )
+
+            q_init = self.stabilizer(q_init)
         
         # Set initial condition
         sol.append(q_init)
 
         t_vec = [t]
 
+        pbar = tqdm(
+            total=t_final,
+            bar_format = "{desc}: {percentage:.2f}%|{bar:20}| {n:.2f}/{total_fmt} [{elapsed}<{remaining}]"#
+            )
         while t < t_final:
-
-            step_size = get_CFL_step_size(
-                velocity=self.velocity(sol[-1]), 
-                min_dx=self.DG_vars.dx, 
-                CFL=.1
-                )
-
-            step_size = 0.0001
+            
+            if self.time_integrator_type == 'SSPRK':
+                step_size = self.step_size(
+                    velocity=self.velocity(sol[-1]), 
+                    min_dx=self.DG_vars.dx, 
+                    CFL=.1
+                    )
+            else:
+                step_size = self.step_size
 
             if t + step_size - 1e-1 > t_final:
                 step_size = t_final - t
@@ -235,11 +307,11 @@ class BaseModel():
             t_vec.append(t)
 
             sol.append(sol_)
+            pbar.set_postfix({'':f'{t:.2f}/{t_final:.2f}'})
 
-            print(t)
-
-
-            
+            pbar.update(step_size)
+            #print(t)
+        pbar.close()
         
         return np.stack(sol, axis=-1) , t_vec
         

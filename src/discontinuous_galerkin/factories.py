@@ -1,4 +1,5 @@
 from discontinuous_galerkin.numerical_fluxes.lax_friedrichs import LaxFriedrichsFlux 
+from discontinuous_galerkin.numerical_fluxes.roe import RoeFlux
 from discontinuous_galerkin.stabilizers.slope_limiters import GeneralizedSlopeLimiter
 from discontinuous_galerkin.stabilizers.filters import ExponentialFilter
 from discontinuous_galerkin.time_integrators.implicit_euler import ImplicitEuler
@@ -8,22 +9,23 @@ import pdb
 
 def get_boundary_conditions(
     DG_vars, 
-    BC_types, 
+    BC_params, 
+    numerical_BC_flux,
     boundary_conditions, 
-    flux,
-    numerical_flux, 
-    BC_params: dict=None
+    flux, 
     ):
     """Get the boundary conditions."""
-
-    if BC_params is None:
-        BC_params = {}
 
     factory = {
         'dirichlet': DirichletBoundaryConditions,
     }
 
-    BCs = factory[BC_types](DG_vars, boundary_conditions, flux, numerical_flux, **BC_params)
+    BCs = factory[BC_params['type']](
+        DG_vars=DG_vars, 
+        boundary_conditions=boundary_conditions, 
+        flux=flux,
+        numerical_flux=numerical_BC_flux
+        )
 
     return BCs
 
@@ -84,8 +86,8 @@ def get_numerical_flux(
 
     factory = {
         'lax_friedrichs': LaxFriedrichsFlux,
+        'roe': RoeFlux,
     }
-
     numerical_flux = factory[numerical_flux_type](DG_vars, **numerical_flux_params)
     
     return numerical_flux
