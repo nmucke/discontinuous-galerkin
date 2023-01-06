@@ -12,7 +12,8 @@ class DirichletBoundaryConditions(BaseBoundaryConditions):
     def __init__(
         self, 
         DG_vars, 
-        boundary_conditions, flux, 
+        boundary_conditions, 
+        flux, 
         numerical_flux,
         **args
         ):
@@ -22,7 +23,7 @@ class DirichletBoundaryConditions(BaseBoundaryConditions):
 
         self.DG_vars = DG_vars
         self.boundary_conditions = boundary_conditions
-        self.num_BCs = len(self.boundary_conditions(0))
+        self.num_BCs = 2#len(self.boundary_conditions(0))
 
         self.numerical_flux = numerical_flux
         self.flux = flux
@@ -34,7 +35,7 @@ class DirichletBoundaryConditions(BaseBoundaryConditions):
 
         for i in range(self.DG_vars.num_states):
             for edge, idx in zip(['left', 'right'], [0, -1]):
-                bc = self.boundary_conditions(t)[i][edge]
+                bc = self.boundary_conditions(t, q_boundary)[i][edge]
                 
                 if bc is not None:
                     ghost_states[i, idx] = -q_boundary[i, idx] + 2 * bc

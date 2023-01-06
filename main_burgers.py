@@ -3,6 +3,7 @@ from discontinuous_galerkin.base.base_model import BaseModel
 from discontinuous_galerkin.start_up_routines.start_up_1D import StartUp1D
 import matplotlib.pyplot as plt
 import pdb
+import time
 
 class BurgersEquation(BaseModel):
     """Advection equation model class."""
@@ -47,7 +48,7 @@ class BurgersEquation(BaseModel):
 
         return np.expand_dims(init, 0)
     
-    def boundary_conditions(self, t):
+    def boundary_conditions(self, t, q):
         """Compute the boundary conditions."""
 
         BC_state_1 = {
@@ -87,6 +88,7 @@ if __name__ == '__main__':
         'alpha': 0.5,
     }
 
+    '''
     stabilizer_type = 'slope_limiter'
     stabilizer_params = {
         'second_derivative_upper_bound': 1e1,
@@ -97,9 +99,8 @@ if __name__ == '__main__':
         'num_modes_to_filter': 0,
         'filter_order': 6,
     }
-    '''
 
-    time_integrator_type = 'SSPRK'
+    time_integrator_type = 'implicit_euler'
     time_integrator_params = {
     }
 
@@ -112,7 +113,7 @@ if __name__ == '__main__':
     for polynomial_order in conv_list:
 
         #polynomial_order=8
-        num_elements=25
+        num_elements = 500
 
         num_DOFs.append((polynomial_order+1)*num_elements)
 
@@ -137,8 +138,10 @@ if __name__ == '__main__':
         true_sol = lambda t: burgers_DG.initial_condition(
             burgers_DG.DG_vars.x.flatten('F') - 3*t
             )
-        
+        t1 = time.time()
         sol, t_vec = burgers_DG.solve(t=0, q_init=init, t_final=0.4)
+        t2 = time.time()
+        print('Time to solve: ', t2-t1)
 
         true_sol_array = np.zeros(
             (burgers_DG.DG_vars.num_states, 

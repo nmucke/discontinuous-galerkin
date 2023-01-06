@@ -1,12 +1,14 @@
+import time
 import numpy as np
 from discontinuous_galerkin.base.base_model import BaseModel
 from discontinuous_galerkin.start_up_routines.start_up_1D import StartUp1D
 import matplotlib.pyplot as plt
 import pdb
-from matplotlib.animation import FuncAnimation
-import time
 
-class EulersEquations(BaseModel):
+from matplotlib.animation import FuncAnimation
+
+
+class PipeflowEquations(BaseModel):
     """Advection equation model class."""
 
     def __init__(
@@ -41,79 +43,121 @@ class EulersEquations(BaseModel):
             numerical_flux_params=numerical_flux_params,
             )
 
-        self.gamma = 1.4
-    
+        self.L = 2000
+        self.d = 0.508
+        self.A = np.pi*self.d**2/4
+        self.c = 308.
+        self.p_amb = 101325.
+        self.p_ref = 5016390.
+        self.rho_ref = 52.67
+        self.e = 1e-8
+        self.mu = 1.2e-5
+        self.Cd = 5e-4
+
+        
+
+    def density_to_pressure(self, rho):
+        """Compute the pressure from the density."""
+
+        return self.c**2*(rho - self.rho_ref) + self.p_ref
+
+    def pressure_to_density(self, p):
+        """Compute the density from the pressure."""
+
+        return (p - self.p_ref)/self.c**2 + self.rho_ref
+
+    def friction_factor(self, q):
+        """Compute the friction factor."""
+
+        rho = q[0]/self.A
+        u = q[1]/q[0]
+
+        Re = rho * u * self.d / self.mu
+        
+        f = (self.e/self.d/3.7)**(1.11) + 6.9/Re
+        f *= -1/4*1.8*np.log10(f)**(-2)
+        f *= -1/2/self.d * rho * u*u 
+
+        return f
+
     def initial_condition(self, x):
         """Compute the initial condition."""
-        init = np.zeros((self.DG_vars.num_states, x.shape[0]))
 
-        init[0, x<0.5] = 1.0
-        init[0, x>=0.5] = 0.125
+        init = np.ones((self.DG_vars.num_states, x.shape[0]))
 
-        init[1] = 0.0
-
-        init[2, x<0.5] =  1.
-        init[2, x>=0.5] = 0.1
-        init[2] *= 1.0/(self.gamma-1)
+        init[0] = self.pressure_to_density(self.p_ref) * self.A
+        init[1] = init[0] * 4.0
 
         return init
     
     def boundary_conditions(self, t, q=None):
         """Compute the boundary conditions."""
 
-        gamma = 1.4
-        p_in = 1.0
-        p_out = 0.1
+        rho_out = self.pressure_to_density(self.p_ref)
 
         BC_state_1 = {
-            'left': 1.0,
-            'right': 0.125,
+            'left': None,
+            'right': rho_out * self.A,
         }
         BC_state_2 = {
-            'left': 0.0,
-            'right': 0.0,
-        }
-        BC_state_3 = {
-            'left': p_in/(gamma-1),
-            'right': p_out/(gamma-1),
+            'left': q[0, 0] * 4.0,
+            'right': None
         }
 
-        BCs = [BC_state_1, BC_state_2, BC_state_3]
+        BCs = [BC_state_1, BC_state_2]
         
         return BCs
     
     def velocity(self, q):
         """Compute the wave speed."""
+        
+        u = q[1]/q[0]
 
-        p = (self.gamma-1)*(q[2] - 0.5*q[1]*q[1]/q[0])
+        c = np.abs(u) + self.c/np.sqrt(self.A)
 
-        return np.sqrt(self.gamma*p/q[0]) + abs(q[1]/q[0])
+        return c
         
     def flux(self, q):
         """Compute the flux."""
 
-        u = q[1]/q[0]
 
-        p = (self.gamma-1)*(q[2] - 0.5*q[0]*u*u)
+        p = self.density_to_pressure(q[0]/self.A)
 
         flux = np.zeros((self.DG_vars.num_states, q.shape[1]))
 
         flux[0] = q[1]
-        flux[1] = q[0] * u * u + p
-        flux[2] = (q[2] + p) * u
+        flux[1] = q[1]*q[1]/q[0] + p * self.A
 
         return flux
     
     def source(self, q):
         """Compute the source."""
 
-        return np.zeros((self.DG_vars.num_states,self.DG_vars.Np*self.DG_vars.K))
+        s = np.zeros((self.DG_vars.num_states,self.DG_vars.Np*self.DG_vars.K))
+
+        x = pipe_DG.DG_vars.x.flatten('F')
+        #point_source = np.exp(-(x-500)**2 / (2*25**2))
+
+        
+        #point_source = 1/width * np.heaviside(500, x/width)
+        width = 25
+        point_source = 1/width * (np.heaviside(x-1000, 1) - np.heaviside(x-1000-width, 1))
+
+
+        rho = q[0]/self.A
+        p = self.density_to_pressure(rho)
+
+        s[0] = - self.Cd * np.sqrt(rho * (p - self.p_amb)) * point_source
+
+        s[1] = -self.friction_factor(q)
+
+        return s
 
 if __name__ == '__main__':
     
 
     xmin = 0.
-    xmax = 1
+    xmax = 2000
 
     BC_types = 'dirichlet'
 
@@ -122,6 +166,7 @@ if __name__ == '__main__':
         'alpha': 0.0,
     }
     
+    '''
     stabilizer_type = 'slope_limiter'
     stabilizer_params = {
         'second_derivative_upper_bound': 1e-8,
@@ -132,26 +177,24 @@ if __name__ == '__main__':
         'num_modes_to_filter': 10,
         'filter_order': 6,
     }
-    '''
 
     time_integrator_type = 'implicit_euler'
-    time_integrator_params = {
-    }
+    time_integrator_params = {}
 
     polynomial_type='legendre'
-    num_states=3
+    num_states=2
 
     error = []
-    conv_list = [2]
+    conv_list = [3]
     num_DOFs = []
     for polynomial_order in conv_list:
 
         #polynomial_order=8
-        num_elements=150
+        num_elements=200
 
         num_DOFs.append((polynomial_order+1)*num_elements)
 
-        eulers_DG = EulersEquations(
+        pipe_DG = PipeflowEquations(
             xmin=xmin,
             xmax=xmax,
             num_elements=num_elements,
@@ -168,61 +211,36 @@ if __name__ == '__main__':
             )
 
 
-        init = eulers_DG.initial_condition(eulers_DG.DG_vars.x.flatten('F'))
+        init = pipe_DG.initial_condition(pipe_DG.DG_vars.x.flatten('F'))
 
-        
         t1 = time.time()
-        sol, t_vec = eulers_DG.solve(t=0, q_init=init, t_final=0.2)
+        sol, t_vec = pipe_DG.solve(t=0, q_init=init, t_final=64.0)
         t2 = time.time()
-        print('Time to solve: ', t2-t1)
-
-        '''
-        true_sol = lambda t: eulers_DG.initial_condition(
-            eulers_DG.DG_vars.x.flatten('F') - 3*t
-            )
-        true_sol_array = np.zeros(
-            (eulers_DG.DG_vars.num_states, 
-            eulers_DG.DG_vars.Np * eulers_DG.DG_vars.K, 
-            len(t_vec))
-            )
-        for i in range(len(t_vec)):
-            true_sol_array[:, :, i] = true_sol(t_vec[i])
-            
-        l2_error = np.linalg.norm(sol - true_sol_array) / np.linalg.norm(true_sol_array)
-    
-        error.append(l2_error)
-        '''
-    '''
-    plt.figure()
-    plt.loglog(num_DOFs, error, '.-', label='error', linewidth=2, markersize=10)
-    plt.loglog(num_DOFs, [10**(-i) for i in range(len(num_DOFs))], label='slope 1', linewidth=2)
-    plt.loglog(num_DOFs, [10**(-i*2) for i in range(len(num_DOFs))], label='slope 2', linewidth=2)
-    plt.loglog(num_DOFs, [10**(-i*3) for i in range(len(num_DOFs))], label='slope 3', linewidth=2)
-    plt.legend()
-    plt.grid()
-    plt.show()
-    '''
+        print('time to solve: ', t2-t1)
 
     plt.figure()
-    plt.plot(eulers_DG.DG_vars.x.flatten('F'), init[0], label='initial rho', linewidth=1)
-    plt.plot(eulers_DG.DG_vars.x.flatten('F'), init[1]/init[0], label='initial u', linewidth=1)
+    #plt.plot(pipe_DG.DG_vars.x.flatten('F'), init[0], label='initial rho', linewidth=1)
+    plt.plot(pipe_DG.DG_vars.x.flatten('F'), init[1]/init[0], label='initial u', linewidth=1)
     #plt.plot(eulers_DG.DG_vars.x.flatten('F'), true_sol(t_vec[-1])[0], label='true', linewidth=3)
-    plt.plot(eulers_DG.DG_vars.x.flatten('F'), sol[0, :, -1], label='rho', linewidth=2)
-    plt.plot(eulers_DG.DG_vars.x.flatten('F'), sol[1, :, -1]/sol[0, :, -1], label='u', linewidth=2)
+    #plt.plot(pipe_DG.DG_vars.x.flatten('F'), sol[0, :, -1], label='rho', linewidth=2)
+    plt.plot(pipe_DG.DG_vars.x.flatten('F'), sol[1, :, -1]/sol[0, :, -1], label='u', linewidth=2)
     plt.grid()
     plt.legend()
     plt.show()
-    
-    x = eulers_DG.DG_vars.x.flatten('F')
+
+    u = sol[1]/sol[0]#sol[0]/pipe_DG.A## #
+    u = u[:, 1:-1:2]
+
     fig = plt.figure()
-    ax = plt.axes(xlim=(x.min(), x.max()), ylim=(0, 1.2))
+    ax = plt.axes(xlim=(0, xmax), ylim=(u.min(), u.max()))
     line, = ax.plot([], [], lw=3)
 
     def init():
         line.set_data([], [])
         return line,
     def animate(i):
-        y = sol[0, :, i]
+        x = pipe_DG.DG_vars.x.flatten('F')
+        y = u[:, i]
         line.set_data(x, y)
         return line,
 
@@ -230,10 +248,10 @@ if __name__ == '__main__':
         fig, 
         animate, 
         init_func=init,
-        frames=200, 
+        frames=u.shape[1], 
         interval=20, 
         blit=True
         )
 
-    anim.save('lol.gif', writer='imagemagick')
 
+    anim.save('lol.gif', writer='imagemagick')

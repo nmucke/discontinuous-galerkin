@@ -220,9 +220,12 @@ class BaseModel():
                 CFL=.1
                 )
 
-            if t + step_size > t_final:
-                step_size = t_final - t
+            step_size = 0.25
 
+            if t + step_size - 1e-1 > t_final:
+                pdb.set_trace()
+                step_size = t_final - t
+            
             sol_, t = self.time_integrator(
                 t=t_vec[-1], 
                 q=sol[-1],
@@ -233,6 +236,11 @@ class BaseModel():
             t_vec.append(t)
 
             sol.append(sol_)
+
+            print(t)
+
+
+            
         
         return np.stack(sol, axis=-1) , t_vec
         

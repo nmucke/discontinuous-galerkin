@@ -47,7 +47,7 @@ class AdvectionEquation(BaseModel):
 
         return init
     
-    def boundary_conditions(self, t):
+    def boundary_conditions(self, t, q):
         """Compute the boundary conditions."""
 
         BC_state_1 = {
@@ -97,7 +97,7 @@ if __name__ == '__main__':
         'filter_order': 32,
     }
 
-    time_integrator_type = 'SSPRK'
+    time_integrator_type = 'implicit_euler'
     time_integrator_params = None
 
     polynomial_type='legendre'
@@ -106,7 +106,7 @@ if __name__ == '__main__':
     true_sol = lambda t: np.sin(advection_DG.DG_vars.x.flatten('F') - 2*np.pi*t)
 
     error = []
-    conv_list = [1, 2, 4, 8, 16]
+    conv_list = [1, 2, 3, 4, 5]
     num_DOFs = []
     for polynomial_order in conv_list:
 
