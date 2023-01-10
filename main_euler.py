@@ -163,6 +163,7 @@ if __name__ == '__main__':
 
     BC_params = {
         'type':'dirichlet',
+        'treatment': 'characteristic',
         'numerical_flux': 'lax_friedrichs',
     }
 
@@ -189,7 +190,7 @@ if __name__ == '__main__':
     }
     '''
 
-    time_integrator_type = 'implicit_euler'
+    time_integrator_type = 'SSPRK'
     time_integrator_params = {
         'step_size': 0.0001,
         'newton_params':{
@@ -204,8 +205,8 @@ if __name__ == '__main__':
 
     error = []
     num_DOFs = []
-    polynomial_order=8
-    num_elements=25
+    polynomial_order=2
+    num_elements=50
 
     num_DOFs.append((polynomial_order+1)*num_elements)
 
@@ -253,6 +254,7 @@ if __name__ == '__main__':
 
     BC_params = {
         'type':'dirichlet',
+        'treatment': 'naive',
         'numerical_flux': 'lax_friedrichs',
     }
     eulers_DG = EulersEquations(

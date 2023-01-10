@@ -33,6 +33,7 @@ class PipeflowEquations(BaseModel):
 
         return self.c**2*(rho - self.rho_ref) + self.p_ref
 
+
     def pressure_to_density(self, p):
         """Compute the density from the pressure."""
 
@@ -178,6 +179,7 @@ if __name__ == '__main__':
 
     BC_params = {
         'type':'dirichlet',
+        'treatment': 'naive',
         'numerical_flux': 'roe',
     }
 
@@ -189,7 +191,7 @@ if __name__ == '__main__':
         }
     }
 
-    numerical_flux_type = 'roe'
+    numerical_flux_type = 'lax_friedrichs'
     numerical_flux_params = {
         #'alpha': 0.0,
     }
@@ -259,17 +261,26 @@ if __name__ == '__main__':
         t2 = time.time()
         print('time to solve: ', t2-t1)
 
+        x = np.linspace(xmin, xmax, 2000)
+
+        u = np.zeros((len(x), len(t_vec)))
+        rho = np.zeros((len(x), len(t_vec)))
+        for t in range(sol.shape[-1]):
+            rho[:, t] = pipe_DG.evaluate_solution(x, sol_nodal=sol[0, :, t])
+            u[:, t] = pipe_DG.evaluate_solution(x, sol_nodal=sol[1, :, t])
+        rho = rho / pipe_DG.A
+        u = u / rho
+
     plt.figure()
     #plt.plot(pipe_DG.DG_vars.x.flatten('F'), init[0], label='initial rho', linewidth=1)
-    plt.plot(pipe_DG.DG_vars.x.flatten('F'), init[1]/init[0], label='initial u', linewidth=1)
+    #plt.plot(x, init[1]/init[0], label='initial u', linewidth=1)
     #plt.plot(eulers_DG.DG_vars.x.flatten('F'), true_sol(t_vec[-1])[0], label='true', linewidth=3)
     #plt.plot(pipe_DG.DG_vars.x.flatten('F'), sol[0, :, -1], label='rho', linewidth=2)
-    plt.plot(pipe_DG.DG_vars.x.flatten('F'), sol[1, :, -1]/sol[0, :, -1], label='u', linewidth=2)
+    plt.plot(x, u[:, -1], label='u', linewidth=2)
     plt.grid()
     plt.legend()
     plt.show()
 
-    u = sol[1]/sol[0]#sol[0]/pipe_DG.A## #
     u = u[:, 1:-1]
 
     fig = plt.figure()
@@ -280,7 +291,7 @@ if __name__ == '__main__':
         line.set_data([], [])
         return line,
     def animate(i):
-        x = pipe_DG.DG_vars.x.flatten('F')
+        x = x
         y = u[:, i]
         line.set_data(x, y)
         return line,
