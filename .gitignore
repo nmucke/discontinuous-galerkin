@@ -9,6 +9,7 @@
 *.ppm
 *.avi
 *.mov
+*.gif
 
 # Exclude MacOS files
 *.DS_Store
