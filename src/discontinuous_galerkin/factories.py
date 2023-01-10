@@ -5,6 +5,7 @@ from discontinuous_galerkin.stabilizers.filters import ExponentialFilter
 from discontinuous_galerkin.time_integrators.implicit_euler import ImplicitEuler
 from discontinuous_galerkin.time_integrators.SSPRK import SSPRK
 from discontinuous_galerkin.boundary_conditions.dirichlet_boundary_conditions import DirichletBoundaryConditions 
+from discontinuous_galerkin.boundary_conditions.characteristic_dirichlet_boundary_conditions import CharacteristicDirichletBoundaryConditions
 import pdb
 
 def get_boundary_conditions(
@@ -13,19 +14,33 @@ def get_boundary_conditions(
     numerical_BC_flux,
     boundary_conditions, 
     flux, 
+    eigen=None,
+    source=None
     ):
     """Get the boundary conditions."""
-
-    factory = {
-        'dirichlet': DirichletBoundaryConditions,
-    }
-
-    BCs = factory[BC_params['type']](
-        DG_vars=DG_vars, 
-        boundary_conditions=boundary_conditions, 
-        flux=flux,
-        numerical_flux=numerical_BC_flux
-        )
+    if BC_params['treatment'] == 'naive':
+        factory = {
+            'dirichlet': DirichletBoundaryConditions,
+        }
+        BCs = factory[BC_params['type']](
+            DG_vars=DG_vars, 
+            boundary_conditions=boundary_conditions, 
+            flux=flux,
+            numerical_flux=numerical_BC_flux
+            )
+    elif BC_params['treatment'] == 'characteristic':
+        factory = {
+            'dirichlet': CharacteristicDirichletBoundaryConditions,
+        }
+        BCs = factory[BC_params['type']](
+            DG_vars=DG_vars, 
+            boundary_conditions=boundary_conditions, 
+            flux=flux,
+            numerical_flux=numerical_BC_flux,
+            eigen=eigen,
+            source=source
+            )
+    
 
     return BCs
 

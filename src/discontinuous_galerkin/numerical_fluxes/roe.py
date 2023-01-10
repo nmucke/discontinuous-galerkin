@@ -87,13 +87,13 @@ class RoeFlux(BaseNumericalFlux):
 
         # Compute the eigenvalues of the system
         RDL_q_prod = self._get_eigen(q_roe_average, q_diff)
-        pdb.set_trace()
 
 
         if on_boundary:
             # Compute the numerical flux
             numerical_flux = flux_average - self.nx_boundary*RDL_q_prod
 
+            '''
             u_inside = q_inside[1]/q_inside[0]
             u_outside = q_outside[1]/q_outside[0]
 
@@ -107,11 +107,12 @@ class RoeFlux(BaseNumericalFlux):
             lax_numerical_flux = flux_average + C * 0.5 * (1 - 0) * q_jump
 
             print(lax_numerical_flux-numerical_flux)
+            '''
         else:
             # Compute the numerical flux
             numerical_flux = flux_average - self.DG_vars.nx*RDL_q_prod
 
-
+            '''
             u_inside = q_inside[1]/q_inside[0]
             u_outside = q_outside[1]/q_outside[0]
 
@@ -123,6 +124,7 @@ class RoeFlux(BaseNumericalFlux):
 
             q_jump = self.DG_vars.nx * (q_inside - q_outside)
             lax_numerical_flux = flux_average + C * 0.5 * (1 - 0) * q_jump
+            '''
         
         return numerical_flux
 

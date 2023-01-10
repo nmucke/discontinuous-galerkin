@@ -4,6 +4,7 @@ import pdb
 
 from abc import abstractmethod
 from tqdm import tqdm
+from discontinuous_galerkin.polynomials.jacobi_polynomials import JacobiP
 
 from discontinuous_galerkin.start_up_routines.start_up_1D import StartUp1D
 import discontinuous_galerkin.factories as factories
@@ -107,18 +108,27 @@ class BaseModel():
                     raise NotImplementedError(
                         error_string
                     )
+        if BC_params['treatment'] == 'characteristic':
+            BC_params['eigen'] = self.eigen
+            BC_params['source'] = self.source
+        else:
+            BC_params['eigen'] = None
+            BC_params['source'] = None
+
         self.numerical_BC_flux = factories.get_numerical_flux(
             DG_vars=self.DG_vars,
             numerical_flux_type=BC_params['numerical_flux'],
             numerical_flux_params=numerical_BC_flux_params,
         )
-
+        
         self.BCs = factories.get_boundary_conditions(
             DG_vars=self.DG_vars,
             BC_params=BC_params,
             numerical_BC_flux=self.numerical_BC_flux,
             boundary_conditions=self.boundary_conditions,
             flux=self.flux,
+            eigen=BC_params['eigen'],
+            source=BC_params['source'],
             )
 
         # Initialize the time integrator
@@ -316,3 +326,37 @@ class BaseModel():
         return np.stack(sol, axis=-1) , t_vec
         
 
+    def evaluate_solution(self, x, sol_nodal):
+        """Evaluate the solution at the given points."""
+
+        sol_nodal = sol_nodal.reshape(
+            (self.DG_vars.Np, self.DG_vars.K), 
+            order='F'
+            )
+        sol_modal = np.dot(self.DG_vars.invV, sol_nodal)
+
+        interval_indices = np.searchsorted(self.DG_vars.VX, x, side='left')
+        if x[0] == self.DG_vars.xmin:
+            interval_indices[1:] = interval_indices[1:] - 1
+        else:
+            interval_indices = interval_indices - 1
+
+        VX_repeat = self.DG_vars.VX[interval_indices]
+        x_ref = 2*(x-VX_repeat)/self.DG_vars.deltax - 1
+        sol_modal_repeat = sol_modal[:, interval_indices]
+
+        P = np.zeros((self.DG_vars.Np, x.shape[0]))
+        for i in range(self.DG_vars.Np):
+            P[i, :] = JacobiP(x_ref, 0, 0, i)
+        
+        sol_xVec = np.sum(P*sol_modal_repeat, axis=0)
+       
+        if x[0] == self.DG_vars.xmin:
+            sol_xVec[0] = sol_nodal[0,0]
+        if x[-1] == self.DG_vars.xmax:
+            sol_xVec[-1] = sol_nodal[-1, -1]
+            
+        i_interface = np.where(x == self.DG_vars.VX)
+        sol_xVec[i_interface] = 0.5*(sol_nodal[i_interface[0]-1,-1]+sol_nodal[i_interface[0],0])
+
+        return sol_xVec
