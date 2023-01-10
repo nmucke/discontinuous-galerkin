@@ -20,3 +20,5 @@ For full documentation visit [mkdocs.org](https://www.mkdocs.org).
 
 Hello world $\sum_{i=1} x+2$
 
+Jurriaan is eating peanut butter
+
