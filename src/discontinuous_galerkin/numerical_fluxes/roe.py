@@ -31,9 +31,8 @@ class RoeFlux(BaseNumericalFlux):
     
     def _compute_eigen_from_system_jacobian(self, q):
         """Compute the eigenvalues of the system."""
-
         A = self.system_jacobian(q)
-        d, l, r = self.eigen = eig(A, left=True, right=False)
+        d, l, r = self.eigen = eig(A, left=True, right=True)
         
         return d, l, r
 
@@ -46,13 +45,12 @@ class RoeFlux(BaseNumericalFlux):
         R = np.zeros((q_avg.shape[1], self.DG_vars.num_states, self.DG_vars.num_states))
 
         RDL_q_prod = np.zeros((self.DG_vars.num_states, q_avg.shape[1]))
-        
         if self.system_jacobian is not None:
-            for i in range(q.shape[1]):
+            for i in range(q_avg.shape[1]):
                 #D[:, :, i], L[:, :, i], R[:, :, i] = \
                 #    self._compute_eigen_from_system_jacobian(q[0, i])
                 D, L, R = \
-                    self._compute_eigen_from_system_jacobian(q_avg[0, i])
+                    self._compute_eigen_from_system_jacobian(q_avg[:, i])
         else:
             for i in range(q_avg.shape[1]):
                 D[i, :, :], L[i, :, :], R[i, :, :] = self.eigen(q_avg[:, i])
@@ -89,13 +87,42 @@ class RoeFlux(BaseNumericalFlux):
 
         # Compute the eigenvalues of the system
         RDL_q_prod = self._get_eigen(q_roe_average, q_diff)
+        pdb.set_trace()
+
 
         if on_boundary:
             # Compute the numerical flux
             numerical_flux = flux_average - self.nx_boundary*RDL_q_prod
+
+            u_inside = q_inside[1]/q_inside[0]
+            u_outside = q_outside[1]/q_outside[0]
+
+            # Compute the velocity
+            A = 0.2026829916389991
+            C_inside = np.abs(u_inside) + 308/np.sqrt(A)
+            C_outside = np.abs(u_outside) + 308/np.sqrt(A)
+            C = np.maximum(np.abs(C_inside), np.abs(C_outside))
+
+            q_jump = self.nx_boundary * (q_inside - q_outside)
+            lax_numerical_flux = flux_average + C * 0.5 * (1 - 0) * q_jump
+
+            print(lax_numerical_flux-numerical_flux)
         else:
             # Compute the numerical flux
             numerical_flux = flux_average - self.DG_vars.nx*RDL_q_prod
+
+
+            u_inside = q_inside[1]/q_inside[0]
+            u_outside = q_outside[1]/q_outside[0]
+
+            # Compute the velocity
+            A = 0.2026829916389991
+            C_inside = np.abs(u_inside) + 308/np.sqrt(A)
+            C_outside = np.abs(u_outside) + 308/np.sqrt(A)
+            C = np.maximum(np.abs(C_inside), np.abs(C_outside))
+
+            q_jump = self.DG_vars.nx * (q_inside - q_outside)
+            lax_numerical_flux = flux_average + C * 0.5 * (1 - 0) * q_jump
         
         return numerical_flux
 

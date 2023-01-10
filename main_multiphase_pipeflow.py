@@ -53,41 +53,6 @@ class PipeflowEquations(BaseModel):
         return f
 
 
-    '''
-    def eigen(self, q):
-        """Compute the eigenvalues."""
-
-        u = q[1]/q[0]
-        p = (self.gamma-1)*(q[2] - 0.5*q[0]*u*u)
-        c = np.sqrt(self.gamma*p/q[0])
-
-        H = c*c/(self.gamma-1) + 0.5*u*u
-
-        lambda_1 = u - c
-        lambda_2 = u
-
-        D = np.diag(np.array([lambda_1, lambda_2]))
-
-        R = np.zeros((self.DG_vars.num_states, self.DG_vars.num_states))
-
-        R[:, 0] = np.array([x, x])
-        R[:, 1] = np.array([x, x])
-
-
-        L = np.zeros((self.DG_vars.num_states, self.DG_vars.num_states))
-
-        L[0, :] = np.array([
-            x,
-            x
-            ])
-        L[1, :] = 1/c/c * np.array([
-            x,
-            x
-        ])
-
-        return D, L, R
-    '''
-
     def system_jacobian(self, q):
 
         u = q[1]/q[0]
@@ -225,39 +190,33 @@ if __name__ == '__main__':
     polynomial_type='legendre'
     num_states=2
 
-    error = []
-    conv_list = [3]
-    num_DOFs = []
-    for polynomial_order in conv_list:
 
-        #polynomial_order=8
-        num_elements=50
+    polynomial_order=3
+    num_elements=50
 
-        num_DOFs.append((polynomial_order+1)*num_elements)
-
-        pipe_DG = PipeflowEquations(
-            xmin=xmin,
-            xmax=xmax,
-            num_elements=num_elements,
-            polynomial_order=polynomial_order,
-            polynomial_type=polynomial_type,
-            num_states=num_states,
-            BC_params=BC_params,
-            stabilizer_type=stabilizer_type, 
-            stabilizer_params=stabilizer_params,
-            time_integrator_type=time_integrator_type,
-            time_integrator_params=time_integrator_params, 
-            numerical_flux_type=numerical_flux_type,
-            numerical_flux_params=numerical_flux_params,
-            )
+    pipe_DG = PipeflowEquations(
+        xmin=xmin,
+        xmax=xmax,
+        num_elements=num_elements,
+        polynomial_order=polynomial_order,
+        polynomial_type=polynomial_type,
+        num_states=num_states,
+        BC_params=BC_params,
+        stabilizer_type=stabilizer_type, 
+        stabilizer_params=stabilizer_params,
+        time_integrator_type=time_integrator_type,
+        time_integrator_params=time_integrator_params, 
+        numerical_flux_type=numerical_flux_type,
+        numerical_flux_params=numerical_flux_params,
+        )
 
 
-        init = pipe_DG.initial_condition(pipe_DG.DG_vars.x.flatten('F'))
+    init = pipe_DG.initial_condition(pipe_DG.DG_vars.x.flatten('F'))
 
-        t1 = time.time()
-        sol, t_vec = pipe_DG.solve(t=0, q_init=init, t_final=25.0)
-        t2 = time.time()
-        print('time to solve: ', t2-t1)
+    t1 = time.time()
+    sol, t_vec = pipe_DG.solve(t=0, q_init=init, t_final=25.0)
+    t2 = time.time()
+    print('time to solve: ', t2-t1)
 
     plt.figure()
     #plt.plot(pipe_DG.DG_vars.x.flatten('F'), init[0], label='initial rho', linewidth=1)
