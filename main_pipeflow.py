@@ -26,8 +26,6 @@ class PipeflowEquations(BaseModel):
         self.mu = 1.2e-5
         self.Cd = 5e-4
 
-        
-
     def density_to_pressure(self, rho):
         """Compute the pressure from the density."""
 
@@ -120,7 +118,7 @@ class PipeflowEquations(BaseModel):
             'right': rho_out * self.A,
         }
         BC_state_2 = {
-            'left': q[0, 0] * 4.0,
+            'left': q[0, 0] * (4.0 + 0.5*np.sin(0.2*t)),
             'right': None
         }
 
@@ -159,7 +157,8 @@ class PipeflowEquations(BaseModel):
         if t>0:
             x = pipe_DG.DG_vars.x.flatten('F')
             width = 50
-            point_source = (np.heaviside(x-1000 + width/2, 1) - np.heaviside(x-1000-width/2, 1))
+            point_source = \
+                (np.heaviside(x-500 + width/2, 1) - np.heaviside(x-500-width/2, 1))
             point_source *= 1/width
 
         rho = q[0]/self.A
@@ -228,12 +227,12 @@ if __name__ == '__main__':
     num_states=2
 
     error = []
-    conv_list = [3]
+    conv_list = [2]
     num_DOFs = []
     for polynomial_order in conv_list:
 
         #polynomial_order=8
-        num_elements=50
+        num_elements = 150
 
         num_DOFs.append((polynomial_order+1)*num_elements)
 
@@ -256,10 +255,8 @@ if __name__ == '__main__':
 
         init = pipe_DG.initial_condition(pipe_DG.DG_vars.x.flatten('F'))
 
-        t1 = time.time()
-        sol, t_vec = pipe_DG.solve(t=0, q_init=init, t_final=25.0)
-        t2 = time.time()
-        print('time to solve: ', t2-t1)
+        t_final = 100.0
+        sol, t_vec = pipe_DG.solve(t=0, q_init=init, t_final=t_final)
 
         x = np.linspace(xmin, xmax, 2000)
 
@@ -269,41 +266,44 @@ if __name__ == '__main__':
             rho[:, t] = pipe_DG.evaluate_solution(x, sol_nodal=sol[0, :, t])
             u[:, t] = pipe_DG.evaluate_solution(x, sol_nodal=sol[1, :, t])
         rho = rho / pipe_DG.A
-        u = u / rho
+        u = u / rho / pipe_DG.A
+    
+    t_vec = np.arange(0, u.shape[1])
 
     plt.figure()
-    #plt.plot(pipe_DG.DG_vars.x.flatten('F'), init[0], label='initial rho', linewidth=1)
-    #plt.plot(x, init[1]/init[0], label='initial u', linewidth=1)
-    #plt.plot(eulers_DG.DG_vars.x.flatten('F'), true_sol(t_vec[-1])[0], label='true', linewidth=3)
-    #plt.plot(pipe_DG.DG_vars.x.flatten('F'), sol[0, :, -1], label='rho', linewidth=2)
+    plt.imshow(u, extent=[0,t_final,2000, 0], aspect='auto')
+    plt.colorbar()
+    plt.show()
+
+    plt.figure()
+    plt.plot(x, u[:, 0], label='u', linewidth=2)
     plt.plot(x, u[:, -1], label='u', linewidth=2)
     plt.grid()
     plt.legend()
     plt.show()
 
-    u = u[:, 1:-1]
-
-    fig = plt.figure()
-    ax = plt.axes(xlim=(0, xmax), ylim=(u.min(), u.max()))
-    line, = ax.plot([], [], lw=3)
+    fig, ax = plt.subplots()
+    xdata, ydata = [], []
+    ln, = ax.plot([], [], lw=3, animated=True)
 
     def init():
-        line.set_data([], [])
-        return line,
-    def animate(i):
-        x = x
-        y = u[:, i]
-        line.set_data(x, y)
-        return line,
+        ax.set_xlim(0, 2000)
+        ax.set_ylim(2, 6)
+        return ln,
 
-    anim = FuncAnimation(
-        fig, 
-        animate, 
-        init_func=init,
-        frames=u.shape[1], 
-        interval=20, 
-        blit=True
+    def update(frame):
+        xdata.append(x)
+        ydata.append(u[:, frame])
+        ln.set_data(x, u[:, frame])
+        return ln,
+
+    ani = FuncAnimation(
+        fig,
+        update,
+        frames=t_vec,
+        init_func=init, 
+        blit=True,
+        interval=10,
         )
-
-
-    anim.save('lol.gif', writer='imagemagick')
+    ani.save('pipeflow.gif', fps=30)
+    plt.show()
