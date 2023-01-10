@@ -266,7 +266,7 @@ class BaseModel():
 
         return rhs
 
-    def solve(self, t, q_init, t_final):
+    def solve(self, t, q_init, t_final, print_progress=True):
         """Solve the model.
 
         This method solves the model and returns the solution.
@@ -289,10 +289,11 @@ class BaseModel():
 
         t_vec = [t]
 
-        pbar = tqdm(
-            total=t_final,
-            bar_format = "{desc}: {percentage:.2f}%|{bar:20}| {n:.2f}/{total_fmt} [{elapsed}<{remaining}]"#
-            )
+        if print_progress:
+            pbar = tqdm(
+                total=t_final,
+                bar_format = "{desc}: {percentage:.2f}%|{bar:20}| {n:.2f}/{total_fmt} [{elapsed}<{remaining}]"#
+                )
         while t < t_final:
             
             if self.time_integrator_type == 'SSPRK':
@@ -317,11 +318,13 @@ class BaseModel():
             t_vec.append(t)
 
             sol.append(sol_)
-            pbar.set_postfix({'':f'{t:.2f}/{t_final:.2f}'})
 
-            pbar.update(step_size)
-            #print(t)
-        pbar.close()
+            if print_progress:
+                pbar.set_postfix({'':f'{t:.2f}/{t_final:.2f}'})
+
+                pbar.update(step_size)
+        if print_progress:        
+            pbar.close()
         
         return np.stack(sol, axis=-1) , t_vec
         
