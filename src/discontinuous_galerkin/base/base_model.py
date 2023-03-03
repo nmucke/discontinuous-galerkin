@@ -57,7 +57,6 @@ class BaseModel():
             num_states=num_states,
             )
 
-
         # Initialize the stabilizer
         self.stabilizer = factories.get_stabilizer(
             DG_vars=self.DG_vars,
@@ -91,43 +90,23 @@ class BaseModel():
         )
         
         # Initialize the boundary conditions
-        if BC_params.get('numerical_flux') is None:
-            BC_params['numerical_flux'] = self.numerical_flux
-        else:
-            numerical_BC_flux_params = {}
-            if BC_params['numerical_flux'] == 'lax_friedrichs':
-                numerical_BC_flux_params['C'] = self.velocity
-            if BC_params['numerical_flux'] == 'roe':
-                if not getattr(self.eigen, '__isabstractmethod__', False):
-                    numerical_BC_flux_params['eigen'] = self.eigen
-                elif not getattr(self.system_jacobian, '__isabstractmethod__', False):
-                    numerical_BC_flux_params['system_jacobian'] = self.system_jacobian
-                else:
-                    error_string = "The eigenvalues and eigenvectors must be implemented for the Roe flux. "
-                    error_string += "Please implement the eigen() or system_jacobian() methods."
-                    raise NotImplementedError(
-                        error_string
-                    )
+        BC_params['numerical_flux'] = self.numerical_flux
+
         if BC_params['treatment'] == 'characteristic':
-            BC_params['eigen'] = self.eigen
+            BC_params['system_jacobian'] = self.system_jacobian
             BC_params['source'] = self.source
         else:
-            BC_params['eigen'] = None
+            BC_params['system_jacobian'] = None
             BC_params['source'] = None
 
-        self.numerical_BC_flux = factories.get_numerical_flux(
-            DG_vars=self.DG_vars,
-            numerical_flux_type=BC_params['numerical_flux'],
-            numerical_flux_params=numerical_BC_flux_params,
-        )
         
         self.BCs = factories.get_boundary_conditions(
             DG_vars=self.DG_vars,
             BC_params=BC_params,
-            numerical_BC_flux=self.numerical_BC_flux,
+            numerical_BC_flux=self.numerical_flux,
             boundary_conditions=self.boundary_conditions,
             flux=self.flux,
-            eigen=BC_params['eigen'],
+            system_jacobian=BC_params['system_jacobian'],
             source=BC_params['source'],
             )
 

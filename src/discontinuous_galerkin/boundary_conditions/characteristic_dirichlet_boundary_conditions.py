@@ -2,6 +2,7 @@ import numpy as np
 from abc import abstractmethod
 from discontinuous_galerkin.base.base_boundary_conditions import BaseBoundaryConditions
 import pdb
+from scipy.linalg import eig
 
 class CharacteristicDirichletBoundaryConditions(BaseBoundaryConditions):
     """
@@ -15,7 +16,7 @@ class CharacteristicDirichletBoundaryConditions(BaseBoundaryConditions):
         boundary_conditions, 
         flux, 
         numerical_flux,
-        eigen,
+        system_jacobian,
         source=None,
         **args
         ):
@@ -26,7 +27,7 @@ class CharacteristicDirichletBoundaryConditions(BaseBoundaryConditions):
         self.DG_vars = DG_vars
         self.boundary_conditions = boundary_conditions
         self.num_BCs = 2#len(self.boundary_conditions(0))
-        self.eigen = eigen
+        self.system_jacobian = system_jacobian
         self.source = source
 
         self.numerical_flux = numerical_flux
@@ -60,6 +61,13 @@ class CharacteristicDirichletBoundaryConditions(BaseBoundaryConditions):
 
 
 
+    def _compute_eigen_from_system_jacobian(self, q):
+        """Compute the eigenvalues of the system."""
+        A = self.system_jacobian(q)
+        d, l, r = self.eigen = eig(A, left=True, right=True)
+        
+        return d, l, r
+
     def _compute_characteristic_ghost_states(self, t, q_boundary):
         """Compute the ghost states."""
         
@@ -72,8 +80,18 @@ class CharacteristicDirichletBoundaryConditions(BaseBoundaryConditions):
         """Compute the ghost states."""
 
         ghost_states = q_boundary
+
+        J_left = self.system_jacobian(q_boundary[:,0])
+        J_right = self.system_jacobian(q_boundary[:,-1])
+
+        # Compute the eigenvalues and eigenvectors
+        d_left, l_left, r_left = self._compute_eigen_from_system_jacobian(q_boundary[:,0])
+        d_right, l_right, r_right = self._compute_eigen_from_system_jacobian(q_boundary[:,-1])
+
+        inverse_l_left = np.linalg.inv(l_left)
         pdb.set_trace()
-        
+
+
 
         for i in range(self.DG_vars.num_states):
             for edge, idx in zip(['left', 'right'], [0, -1]):

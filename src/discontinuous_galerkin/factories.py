@@ -14,7 +14,7 @@ def get_boundary_conditions(
     numerical_BC_flux,
     boundary_conditions, 
     flux, 
-    eigen=None,
+    system_jacobian=None,
     source=None
     ):
     """Get the boundary conditions."""
@@ -37,7 +37,7 @@ def get_boundary_conditions(
             boundary_conditions=boundary_conditions, 
             flux=flux,
             numerical_flux=numerical_BC_flux,
-            eigen=eigen,
+            system_jacobian=system_jacobian,
             source=source
             )
     

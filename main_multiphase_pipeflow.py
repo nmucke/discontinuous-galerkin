@@ -24,9 +24,7 @@ class PipeflowEquations(BaseModel):
         self.rho_ref = 52.67
         self.e = 1e-8
         self.mu = 1.2e-5
-        self.Cd = 5e-4
-
-        
+        self.Cd = 5e-4        
 
     def density_to_pressure(self, rho):
         """Compute the pressure from the density."""
@@ -143,7 +141,7 @@ if __name__ == '__main__':
 
     BC_params = {
         'type':'dirichlet',
-        'numerical_flux': 'roe',
+        'treatment': 'characteristic',
     }
 
     steady_state = {
