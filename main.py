@@ -7,37 +7,8 @@ import pdb
 class AdvectionEquation(BaseModel):
     """Advection equation model class."""
 
-    def __init__(
-        self, 
-        xmin=0.,
-        xmax=1.,
-        num_elements=10,
-        polynomial_order=5,
-        polynomial_type='legendre',
-        num_states=1,
-        BC_types='dirichlet',
-        stabilizer_type=None, 
-        stabilizer_params=None,
-        time_integrator_type='implicit_euler',
-        time_integrator_params=None,
-        numerical_flux_type='lax_friedrichs',
-        numerical_flux_params=None,
-        ):
-        super().__init__(
-            xmin=xmin,
-            xmax=xmax,
-            num_elements=num_elements,
-            polynomial_order=polynomial_order,
-            polynomial_type=polynomial_type,
-            num_states=num_states,
-            BC_types=BC_types,
-            stabilizer_type=stabilizer_type, 
-            stabilizer_params=stabilizer_params,
-            time_integrator_type=time_integrator_type,
-            time_integrator_params=time_integrator_params,
-            numerical_flux_type=numerical_flux_type,
-            numerical_flux_params=numerical_flux_params,
-            )
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
     
     def initial_condition(self, x):
         """Compute the initial condition."""
@@ -75,47 +46,54 @@ class AdvectionEquation(BaseModel):
 if __name__ == '__main__':
     
 
-    xmin=0.
-    xmax=2.*np.pi
-
-    BC_types = 'dirichlet'
-
-    numerical_flux_type = 'lax_friedrichs'
-    numerical_flux_params = {
-        'alpha': .5,
-    }
-
-    '''
-    stabilizer_type = 'slope_limiter'
-    stabilizer_params = {
-        'second_derivative_upper_bound': 1e-1,
-    }
-    '''
-    stabilizer_type = None
-    stabilizer_params = {
-        'num_modes_to_filter': 1,
-        'filter_order': 32,
-    }
-
-    time_integrator_type = 'implicit_euler'
-    time_integrator_params = {
-        'step_size': 0.01,
-        'newton_params':{
-            'solver': 'krylov',
-            'max_newton_iter': 200,
-            'newton_tol': 1e-5
-            }
-    }
-
-    polynomial_type='legendre'
-    num_states=1
-
     true_sol = lambda t: np.sin(advection_DG.DG_vars.x.flatten('F') - 2*np.pi*t)
 
     error = []
-    conv_list = [1, 2, 3, 4, 5]
+    conv_list = [1,2,3,4,5]
     num_DOFs = []
     for polynomial_order in conv_list:
+
+        basic_args = {
+            'xmin': 0,
+            'xmax': 2.*np.pi,
+            'num_elements': 50,
+            'num_states': 1,
+            'polynomial_order': polynomial_order,
+            'polynomial_type': 'legendre',
+        }
+
+        BC_args = {
+            'type': 'dirichlet',
+            'treatment': 'naive'
+        }
+
+        numerical_flux_params = {
+            'type': 'lax_friedrichs',
+            'alpha': .0,
+        }
+
+        '''
+        stabilizer_type = 'slope_limiter'
+        stabilizer_params = {
+            'second_derivative_upper_bound': 1e-1,
+        }
+        '''
+        stabilizer_params = {
+            'type': None,#'filter',
+            'num_modes_to_filter': 10,
+            'filter_order': 32,
+        }
+
+        time_integrator_params = {
+            'type': 'SSPRK',
+            'step_size': 0.0001,
+            'newton_params':{
+                'solver': 'krylov',
+                'max_newton_iter': 200,
+                'newton_tol': 1e-5
+                }
+        }
+
 
         #polynomial_order=15
         num_elements=50
@@ -123,26 +101,18 @@ if __name__ == '__main__':
         num_DOFs.append((polynomial_order+1)*num_elements)
 
         advection_DG = AdvectionEquation(
-            xmin=xmin,
-            xmax=xmax,
-            num_elements=num_elements,
-            polynomial_order=polynomial_order,
-            polynomial_type=polynomial_type,
-            num_states=num_states,
-            BC_types=BC_types,
-            stabilizer_type=stabilizer_type, 
-            stabilizer_params=stabilizer_params,
-            time_integrator_type=time_integrator_type,
-            time_integrator_params=time_integrator_params, 
-            numerical_flux_type=numerical_flux_type,
-            numerical_flux_params=numerical_flux_params,
+            basic_args=basic_args,
+            BC_args=BC_args,
+            stabilizer_args=stabilizer_params,
+            time_integrator_args=time_integrator_params,
+            numerical_flux_args=numerical_flux_params,
             )
         
 
         init = advection_DG.initial_condition(advection_DG.DG_vars.x.flatten('F'))
         #flux = lol.compute_rhs(t=0, q=init)
         
-        sol, t_vec = advection_DG.solve(t=0, q_init=init, t_final=0.1)
+        sol, t_vec = advection_DG.solve(t=0, q_init=init, t_final=7.4)
 
         true_sol_array = np.zeros(
             (advection_DG.DG_vars.num_states, 

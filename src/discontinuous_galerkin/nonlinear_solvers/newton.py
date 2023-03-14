@@ -1,8 +1,6 @@
 import numpy as np
 import pdb
 
-#import autograd.numpy as np
-from autograd import grad, jacobian
 
 import matplotlib.pyplot as plt
 

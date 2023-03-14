@@ -49,7 +49,7 @@ class DirichletBoundaryConditions(BaseBoundaryConditions):
         return self.flux(ghost_states)
 
 
-    def apply_boundary_conditions(self, t, q_boundary, flux_boundary):
+    def apply_boundary_conditions(self, t, q_boundary, flux_boundary, **args):
         """Apply the boundary conditions."""
         
         # Compute the ghost states

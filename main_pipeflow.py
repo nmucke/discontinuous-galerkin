@@ -19,16 +19,15 @@ class PipeflowEquations(BaseModel):
         self.d = 0.508
         self.A = np.pi*self.d**2/4
         self.c = 308.
-        self.p_amb = 101325.
-        self.p_ref = 5016390.
         self.rho_ref = 52.67
+        self.p_amb = 101325.
+        self.p_ref = self.rho_ref*self.c**2#5016390.
         self.e = 1e-8
         self.mu = 1.2e-5
         self.Cd = 5e-4
 
     def density_to_pressure(self, rho):
         """Compute the pressure from the density."""
-
         return self.c**2*(rho - self.rho_ref) + self.p_ref
 
 
@@ -36,6 +35,54 @@ class PipeflowEquations(BaseModel):
         """Compute the density from the pressure."""
 
         return (p - self.p_ref)/self.c**2 + self.rho_ref
+    
+    def conservative_to_primitive_transform_matrix(self, t, q):
+        """Compute the conservative to primitive transform matrices."""
+
+        rho = q[0]/self.A
+        u = q[1]/q[0]
+
+        P = np.zeros((self.DG_vars.num_states, self.DG_vars.num_states))
+        P_inv = np.zeros((self.DG_vars.num_states, self.DG_vars.num_states))
+        A = np.zeros((self.DG_vars.num_states, self.DG_vars.num_states))
+        S = np.zeros((self.DG_vars.num_states, self.DG_vars.num_states))
+        S_inv = np.zeros((self.DG_vars.num_states, self.DG_vars.num_states))
+        Lambda = np.zeros((self.DG_vars.num_states, self.DG_vars.num_states))
+
+        P[0, 0] = 1/self.c/self.c * self.A
+        P[1, 0] = 1/self.c/self.c * u * self.A
+        P[0, 1] = 0
+        P[1, 1] = rho*self.A
+
+        P_inv[0, 0] = self.c*self.c/self.A
+        P_inv[1, 0] = -u/rho/self.A
+        P_inv[0, 1] = 0
+        P_inv[1, 1] = 1/rho/self.A
+
+        A[0, 0] = u
+        A[1, 0] = 1/rho
+        A[0, 1] = self.c*self.c*rho
+        A[1, 1] = u
+
+        C = P_inv @ self.source(t, q)
+
+        S[0, 0] = 1
+        S[1, 0] = -1/rho/self.c
+        S[0, 1] = 1
+        S[1, 1] = 1/rho/self.c
+        S *= 1/2
+
+        S_inv[0, 0] = 1
+        S_inv[1, 0] = 1
+        S_inv[0, 1] = -rho*self.c
+        S_inv[1, 1] = rho*self.c
+
+        Lambda[0, 0] = u - self.c
+        Lambda[1, 0] = 0
+        Lambda[0, 1] = 0
+        Lambda[1, 1] = u + self.c
+
+        return P, P_inv, A, C, S, S_inv, Lambda
 
     def friction_factor(self, q):
         """Compute the friction factor."""
@@ -115,10 +162,10 @@ class PipeflowEquations(BaseModel):
 
         BC_state_1 = {
             'left': None,
-            'right': rho_out * self.A,
+            'right': None#rho_out * self.A,
         }
         BC_state_2 = {
-            'left': q[0, 0] * (4.0 + 0.5*np.sin(0.2*t)),
+            'left': q[0, 0] * (4.0 + 0.5),#*np.sin(0.2*t)),
             'right': None
         }
 
@@ -168,18 +215,21 @@ class PipeflowEquations(BaseModel):
 
         s[1] = -self.friction_factor(q)
 
+        s = 0*s
+
         return s
 
 if __name__ == '__main__':
     
 
-    xmin = 0.
-    xmax = 2000
 
-    BC_params = {
-        'type':'dirichlet',
-        'treatment': 'naive',
-        'numerical_flux': 'roe',
+    basic_args = {
+        'xmin': 0,
+        'xmax': 2000,
+        'num_elements': 50,
+        'num_states': 2,
+        'polynomial_order': 4,
+        'polynomial_type': 'legendre',
     }
 
     steady_state = {
@@ -190,16 +240,10 @@ if __name__ == '__main__':
         }
     }
 
-    numerical_flux_type = 'lax_friedrichs'
-    numerical_flux_params = {
-        #'alpha': 0.0,
-    }
-    '''
-    numerical_flux_type = 'lax_friedrichs'
-    numerical_flux_params = {
+    numerical_flux_args = {
+        'type': 'lax_friedrichs',
         'alpha': 0.0,
     }
-    '''
     
     '''
     stabilizer_type = 'slope_limiter'
@@ -207,24 +251,26 @@ if __name__ == '__main__':
         'second_derivative_upper_bound': 1e-8,
     }
     '''
-    stabilizer_type = 'filter'
-    stabilizer_params = {
+    stabilizer_args = {
+        'type': 'filter',
         'num_modes_to_filter': 10,
         'filter_order': 6,
     }
 
-    time_integrator_type = 'implicit_euler'
-    time_integrator_params = {
+    time_integrator_args = {
+        'type': 'implicit_euler',
         'step_size': 0.1,
         'newton_params':{
-            'solver': 'krylov',
+            'solver': 'direct',
             'max_newton_iter': 200,
             'newton_tol': 1e-5
             }
         }
 
-    polynomial_type='legendre'
-    num_states=2
+    BC_args = {
+        'type': 'dirichlet',
+        'treatment': 'characteristic'
+    }
 
     error = []
     conv_list = [2]
@@ -237,28 +283,25 @@ if __name__ == '__main__':
         num_DOFs.append((polynomial_order+1)*num_elements)
 
         pipe_DG = PipeflowEquations(
-            xmin=xmin,
-            xmax=xmax,
-            num_elements=num_elements,
-            polynomial_order=polynomial_order,
-            polynomial_type=polynomial_type,
-            num_states=num_states,
-            BC_params=BC_params,
-            stabilizer_type=stabilizer_type, 
-            stabilizer_params=stabilizer_params,
-            time_integrator_type=time_integrator_type,
-            time_integrator_params=time_integrator_params, 
-            numerical_flux_type=numerical_flux_type,
-            numerical_flux_params=numerical_flux_params,
-            )
+            basic_args=basic_args,
+            BC_args=BC_args,
+            stabilizer_args=stabilizer_args,
+            time_integrator_args=time_integrator_args,
+            numerical_flux_args=numerical_flux_args,
+        )
 
 
         init = pipe_DG.initial_condition(pipe_DG.DG_vars.x.flatten('F'))
 
-        t_final = 100.0
-        sol, t_vec = pipe_DG.solve(t=0, q_init=init, t_final=t_final)
+        t_final = 40.0
+        sol, t_vec = pipe_DG.solve(
+            t=0, 
+            q_init=init, 
+            t_final=t_final, 
+            steady_state_args=None
+        )
 
-        x = np.linspace(xmin, xmax, 2000)
+        x = np.linspace(0, 2000, 2000)
 
         u = np.zeros((len(x), len(t_vec)))
         rho = np.zeros((len(x), len(t_vec)))
@@ -271,7 +314,7 @@ if __name__ == '__main__':
     t_vec = np.arange(0, u.shape[1])
 
     plt.figure()
-    plt.imshow(u, extent=[0,t_final,2000, 0], aspect='auto')
+    plt.imshow(u, extent=[0, t_final, 2000, 0], aspect='auto')
     plt.colorbar()
     plt.show()
 
@@ -288,13 +331,13 @@ if __name__ == '__main__':
 
     def init():
         ax.set_xlim(0, 2000)
-        ax.set_ylim(2, 6)
+        ax.set_ylim(rho.min(), rho.max())
         return ln,
 
     def update(frame):
         xdata.append(x)
-        ydata.append(u[:, frame])
-        ln.set_data(x, u[:, frame])
+        ydata.append(rho[:, frame])
+        ln.set_data(x, rho[:, frame])
         return ln,
 
     ani = FuncAnimation(
