@@ -12,6 +12,7 @@ from discontinuous_galerkin.time_integrators.CFL import get_CFL_step_size
 from discontinuous_galerkin.steady_state import compute_steady_state 
 
 
+
 #class BaseModel(StartUp1D, Stabilizer, NumericalFlux):
 class BaseModel():
     """

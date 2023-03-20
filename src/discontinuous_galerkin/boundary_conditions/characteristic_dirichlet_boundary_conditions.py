@@ -41,12 +41,13 @@ class CharacteristicDirichletBoundaryConditions(BaseBoundaryConditions):
             self.conservative_to_primitive_transform_matrix(t, q_boundary)
 
         L = Lambda @ S_inv @ P_inv @ q_boundary_diff
+
         if side == 'left':
-            L[1] = 0
+            L[1] = 0.
         else:
             L[0] = 0.
         
-        ode = lambda q: P @ (S @ L)# + C)
+        ode = lambda q: P @ (S @ L) #+ C
 
         ghost_state = q_boundary + ode(q_boundary) * step_size
 
@@ -73,6 +74,9 @@ class CharacteristicDirichletBoundaryConditions(BaseBoundaryConditions):
                 
                 if bc is not None:
                     ghost_states[i, idx] = -q_boundary[i, idx] + 2 * bc
+                
+                #else:
+                #    ghost_states[i, idx] = -q_boundary[i, idx] + 2 * ghost_states[i, idx]
             
         return ghost_states
     

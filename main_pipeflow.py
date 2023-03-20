@@ -162,7 +162,7 @@ class PipeflowEquations(BaseModel):
 
         BC_state_1 = {
             'left': None,
-            'right': None#rho_out * self.A,
+            'right': rho_out * self.A,
         }
         BC_state_2 = {
             'left': q[0, 0] * (4.0 + 0.5),#*np.sin(0.2*t)),
@@ -212,10 +212,10 @@ class PipeflowEquations(BaseModel):
         p = self.density_to_pressure(rho)
 
         s[0] = - self.Cd * np.sqrt(rho * (p - self.p_amb)) * point_source
-
+        s[0] *= 0.
         s[1] = -self.friction_factor(q)
 
-        s = 0*s
+        #s = 0*s
 
         return s
 
@@ -226,7 +226,7 @@ if __name__ == '__main__':
     basic_args = {
         'xmin': 0,
         'xmax': 2000,
-        'num_elements': 50,
+        'num_elements': 75,
         'num_states': 2,
         'polynomial_order': 4,
         'polynomial_type': 'legendre',
@@ -242,12 +242,12 @@ if __name__ == '__main__':
 
     numerical_flux_args = {
         'type': 'lax_friedrichs',
-        'alpha': 0.0,
+        'alpha': 0.5,
     }
     
     '''
-    stabilizer_type = 'slope_limiter'
-    stabilizer_params = {
+    stabilizer_args = {
+        'type': 'slope_limiter',
         'second_derivative_upper_bound': 1e-8,
     }
     '''
@@ -259,9 +259,9 @@ if __name__ == '__main__':
 
     time_integrator_args = {
         'type': 'implicit_euler',
-        'step_size': 0.1,
+        'step_size': 0.05,
         'newton_params':{
-            'solver': 'direct',
+            'solver': 'krylov',
             'max_newton_iter': 200,
             'newton_tol': 1e-5
             }
@@ -269,7 +269,7 @@ if __name__ == '__main__':
 
     BC_args = {
         'type': 'dirichlet',
-        'treatment': 'characteristic'
+        'treatment': 'naive',
     }
 
     error = []
@@ -293,7 +293,7 @@ if __name__ == '__main__':
 
         init = pipe_DG.initial_condition(pipe_DG.DG_vars.x.flatten('F'))
 
-        t_final = 40.0
+        t_final = 20.0
         sol, t_vec = pipe_DG.solve(
             t=0, 
             q_init=init, 
@@ -323,6 +323,7 @@ if __name__ == '__main__':
     plt.plot(x, u[:, -1], label='u', linewidth=2)
     plt.grid()
     plt.legend()
+    plt.savefig('pipeflow.png')
     plt.show()
 
     fig, ax = plt.subplots()
@@ -331,13 +332,13 @@ if __name__ == '__main__':
 
     def init():
         ax.set_xlim(0, 2000)
-        ax.set_ylim(rho.min(), rho.max())
+        ax.set_ylim(u.min(), u.max())
         return ln,
 
     def update(frame):
         xdata.append(x)
-        ydata.append(rho[:, frame])
-        ln.set_data(x, rho[:, frame])
+        ydata.append(u[:, frame])
+        ln.set_data(x, u[:, frame])
         return ln,
 
     ani = FuncAnimation(
