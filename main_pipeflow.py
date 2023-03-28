@@ -36,7 +36,7 @@ class PipeflowEquations(BaseModel):
 
         return (p - self.p_ref)/self.c**2 + self.rho_ref
     
-    def conservative_to_primitive_transform_matrix(self, t, q):
+    def transform_matrices(self, t, q):
         """Compute the conservative to primitive transform matrices."""
 
         rho = q[0]/self.A
@@ -64,8 +64,6 @@ class PipeflowEquations(BaseModel):
         A[0, 1] = self.c*self.c*rho
         A[1, 1] = u
 
-        C = P_inv @ self.source(t, q)
-
         S[0, 0] = 1
         S[1, 0] = -1/rho/self.c
         S[0, 1] = 1
@@ -82,7 +80,7 @@ class PipeflowEquations(BaseModel):
         Lambda[0, 1] = 0
         Lambda[1, 1] = u + self.c
 
-        return P, P_inv, A, C, S, S_inv, Lambda
+        return P, P_inv, A, S, S_inv, Lambda
 
     def friction_factor(self, q):
         """Compute the friction factor."""
@@ -98,53 +96,6 @@ class PipeflowEquations(BaseModel):
 
         return f
 
-
-    '''
-    def eigen(self, q):
-        """Compute the eigenvalues."""
-
-        u = q[1]/q[0]
-        p = (self.gamma-1)*(q[2] - 0.5*q[0]*u*u)
-        c = np.sqrt(self.gamma*p/q[0])
-
-        H = c*c/(self.gamma-1) + 0.5*u*u
-
-        lambda_1 = u - c
-        lambda_2 = u
-
-        D = np.diag(np.array([lambda_1, lambda_2]))
-
-        R = np.zeros((self.DG_vars.num_states, self.DG_vars.num_states))
-
-        R[:, 0] = np.array([x, x])
-        R[:, 1] = np.array([x, x])
-
-
-        L = np.zeros((self.DG_vars.num_states, self.DG_vars.num_states))
-
-        L[0, :] = np.array([
-            x,
-            x
-            ])
-        L[1, :] = 1/c/c * np.array([
-            x,
-            x
-        ])
-
-        return D, L, R
-    '''
-
-    def system_jacobian(self, q):
-
-        u = q[1]/q[0]
-
-        J =np.array(
-            [[0, 1],
-            [-u*u + self.c*self.c/np.sqrt(self.A), 2*u]]
-            )
-
-        return J
-
     def initial_condition(self, x):
         """Compute the initial condition."""
 
@@ -158,14 +109,16 @@ class PipeflowEquations(BaseModel):
     def boundary_conditions(self, t, q=None):
         """Compute the boundary conditions."""
 
-        rho_out = self.pressure_to_density(self.p_ref)
+        #rho_out = self.pressure_to_density(self.p_ref)
 
+        u = q[1]/q[0]
+        
         BC_state_1 = {
             'left': None,
-            'right': rho_out * self.A,
+            'right': 0.#self.p_ref,
         }
         BC_state_2 = {
-            'left': q[0, 0] * (4.0 + 0.5),#*np.sin(0.2*t)),
+            'left': (u-4.5)/self.step_size,#4.0 + 0.5,#*np.sin(0.2*t)),
             'right': None
         }
 
@@ -184,7 +137,6 @@ class PipeflowEquations(BaseModel):
         
     def flux(self, q):
         """Compute the flux."""
-
 
         p = self.density_to_pressure(q[0]/self.A)
 
@@ -226,9 +178,9 @@ if __name__ == '__main__':
     basic_args = {
         'xmin': 0,
         'xmax': 2000,
-        'num_elements': 75,
+        'num_elements': 100,
         'num_states': 2,
-        'polynomial_order': 4,
+        'polynomial_order': 2,
         'polynomial_type': 'legendre',
     }
 
@@ -253,7 +205,7 @@ if __name__ == '__main__':
     '''
     stabilizer_args = {
         'type': 'filter',
-        'num_modes_to_filter': 10,
+        'num_modes_to_filter': 20,
         'filter_order': 6,
     }
 
@@ -269,7 +221,8 @@ if __name__ == '__main__':
 
     BC_args = {
         'type': 'dirichlet',
-        'treatment': 'naive',
+        'treatment': 'characteristic',
+        'form': {'left': 'primitive', 'right': 'primitive'},
     }
 
     error = []

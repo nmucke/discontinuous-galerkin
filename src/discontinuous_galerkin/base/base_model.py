@@ -74,7 +74,7 @@ class BaseModel():
             flux=self.flux,
             system_jacobian=self.system_jacobian,
             source=self.source,
-            conservative_to_primitive_transform_matrix=self.conservative_to_primitive_transform_matrix,
+            transform_matrices=self.transform_matrices,
         )
         
         # Initialize the time integrator
@@ -104,6 +104,12 @@ class BaseModel():
 
     def __repr__(self):
         return self.__str__()
+    
+    @abstractmethod
+    def transform_matrices(self, q):
+        """Compute the transform matrices."""
+
+        raise NotImplementedError
 
     @abstractmethod
     def eigen(self, q):
@@ -169,6 +175,7 @@ class BaseModel():
         # Compute the source term
         source = self.source(t, q)
 
+        '''
         # Compute boundary conditions
         q_boundary=q[:, [self.DG_vars.vmapI, self.DG_vars.vmapO]]
         flux_boundary=flux[:, [self.DG_vars.vmapI, self.DG_vars.vmapO]]
@@ -180,7 +187,6 @@ class BaseModel():
         else:
             q_boundary_diff = None
 
-
         numerical_flux[:, self.DG_vars.mapI], numerical_flux[:, self.DG_vars.mapO] = \
              self.BCs.apply_boundary_conditions(
                 t=t, 
@@ -189,6 +195,7 @@ class BaseModel():
                 q_boundary_diff=q_boundary_diff,
                 step_size=self.step_size,
                 )
+        '''
         d_flux = self.DG_vars.nx * (flux[:, self.DG_vars.vmapM] - numerical_flux)
 
         # Reshape the flux and source terms
@@ -210,6 +217,20 @@ class BaseModel():
             - np.multiply(self.DG_vars.rx, self.DG_vars.Dr @ flux) \
             + self.DG_vars.LIFT @ (np.multiply(self.DG_vars.Fscale, d_flux)) \
             + source
+
+        
+        # Compute boundary conditions
+        BC_rhs_left, BC_rhs_right = self.BCs.get_BC_rhs(
+            t=t,
+            q=q,
+            source=source,
+        )
+
+        # left boundary
+        rhs[:, 0, 0] = BC_rhs_left
+
+        # right boundary
+        rhs[:, -1, -1] = BC_rhs_right
 
         rhs = rhs.reshape(
             (self.DG_vars.num_states, self.DG_vars.Np * self.DG_vars.K), 

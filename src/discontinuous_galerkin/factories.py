@@ -16,7 +16,7 @@ def get_boundary_conditions(
     flux, 
     system_jacobian=None,
     source=None,
-    conservative_to_primitive_transform_matrix=None,
+    transform_matrices=None,
     ):
     """Get the boundary conditions."""
     
@@ -28,7 +28,8 @@ def get_boundary_conditions(
             DG_vars=DG_vars, 
             boundary_conditions=boundary_conditions, 
             flux=flux,
-            numerical_flux=numerical_flux
+            numerical_flux=numerical_flux,
+            **BC_args
             )
     elif BC_args['treatment'] == 'characteristic':
         factory = {
@@ -41,7 +42,8 @@ def get_boundary_conditions(
             numerical_flux=numerical_flux,
             system_jacobian=system_jacobian,
             source=source,
-            conservative_to_primitive_transform_matrix=conservative_to_primitive_transform_matrix
+            transform_matrices=transform_matrices,
+            **BC_args
             )
     
     return BCs
