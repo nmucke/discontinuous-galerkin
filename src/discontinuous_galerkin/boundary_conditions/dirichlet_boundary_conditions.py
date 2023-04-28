@@ -35,6 +35,7 @@ class DirichletBoundaryConditions(BaseBoundaryConditions):
 
         for i in range(self.DG_vars.num_states):
             for edge, idx in zip(['left', 'right'], [0, -1]):
+                
                 bc = self.boundary_conditions(t, q_boundary)[i][edge]
                 
                 if bc is not None:
@@ -51,7 +52,7 @@ class DirichletBoundaryConditions(BaseBoundaryConditions):
 
     def apply_boundary_conditions(self, t, q_boundary, flux_boundary, **args):
         """Apply the boundary conditions."""
-        
+
         # Compute the ghost states
         ghost_states = self._compute_ghost_states(t, q_boundary)
         

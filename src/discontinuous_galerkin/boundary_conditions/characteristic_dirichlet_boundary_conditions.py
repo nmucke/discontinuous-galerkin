@@ -37,35 +37,70 @@ class CharacteristicDirichletBoundaryConditions(BaseBoundaryConditions):
         self.form = form
 
     
-    def _get_primitive_state(self, t, q):
+    def _get_primitive_state(self, t, conv_state):
 
-        w = np.zeros(q.shape)
+        prim_state = np.zeros(conv_state.shape)
 
-        for i in range(q.shape[1]):
+        for i in range(prim_state.shape[1]):
             P, P_inv, A, S, S_inv, Lambda = self.transform_matrices(
                 t=t, 
-                q=q[:, i, 0]
+                q=conv_state[:, i, 0]
                 )
-            w[:, i, 0] = P_inv @ q[:, i, 0]
-
-        return w
-    
-    def _get_primitive_and_conservative_state(self, t, q, side):
+            prim_state[:, i, 0] = P_inv @ conv_state[:, i, 0]
         
-        if side == 'left':
-            q = q[:, :, 0:1]
-        elif side == 'right':
-            q = q[:, :, -1:]
-        w = self._get_primitive_state(t=t, q=q)
-        w_diff = self.DG_vars.Dr @ w[:, :, 0:1]
+        return prim_state
+    
+    def _get_conservative_state(self, t, prim_state):
 
-        q = q[:, 0, 0]
-        w = w[:, 0, 0]
-        w_diff = w_diff[:, 0, 0]
+        conv_state = np.zeros(prim_state.shape)
 
-        return q, w, w_diff
+        for i in range(prim_state.shape[1]):
+            P, P_inv, A, S, S_inv, Lambda = self.transform_matrices(
+                t=t, 
+                q=prim_state[:, i, 0]
+                )
+            
+            conv_state[:, i, 0] = P @ prim_state[:, i, 0]
 
-    def _get_matrices(self, t, q, C, side):
+        return conv_state
+    
+    def _get_primitive_and_conservative_state(
+        self, 
+        t: float = None, 
+        prim_state: np.ndarray = None,
+        conv_state: np.ndarray = None, 
+        side: str = 'left'
+        ):
+        
+        if prim_state is None:
+            if side == 'left':
+                conv_state = conv_state[:, :, 0:1]
+            elif side == 'right':
+                conv_state = conv_state[:, :, -1:]
+            prim_state = self._get_primitive_state(t=t, conv_state=conv_state)
+
+        elif conv_state is None: 
+            if side == 'left':
+                prim_state = prim_state[:, :, 0:1]
+            elif side == 'right':
+                prim_state = prim_state[:, :, -1:]
+            conv_state = self._get_conservative_state(t=t, prim_state=prim_state)
+
+        prim_state_diff = self.DG_vars.Dr @ prim_state[:, :, 0:1]
+
+        conv_state = conv_state[:, 0, 0]
+        prim_state = prim_state[:, 0, 0]
+        prim_state_diff = prim_state_diff[:, 0, 0]
+
+        return conv_state, prim_state, prim_state_diff
+
+    def _get_matrices(
+            self, 
+            t: float, 
+            q: np.ndarray = None, 
+            C: np.ndarray = None, 
+            side: str = 'left'
+        ):
 
         P, P_inv, A, S, S_inv, Lambda = \
             self.transform_matrices(t=t, q=q)
@@ -76,7 +111,7 @@ class CharacteristicDirichletBoundaryConditions(BaseBoundaryConditions):
         elif self.form[side] == 'conservative':
             S = P @ S
         
-        return P, P_inv, A, S, S_inv, Lambda
+        return P, P_inv, A, S, S_inv, Lambda, C
     
     def _get_derived_and_specified_indices(self, t, q, side):
 
@@ -106,31 +141,36 @@ class CharacteristicDirichletBoundaryConditions(BaseBoundaryConditions):
         
         return dWgivenLdt
 
-    def _compute_RHS(self, s, L, dWgivenLdt, k, ind_pos_eigenvalues, ind_der, ind_spec, S, C, P):
+    def _compute_RHS(self, s, L, dWgivenLdt, k, ind_eigenvalues, ind_der, ind_spec, S, C, P, side='left'):
+        
+        L_minus = np.linalg.solve(s[:, ind_eigenvalues], -dWgivenLdt -k)
 
-        L_minus = np.linalg.solve(s[:, ind_pos_eigenvalues], -dWgivenLdt -k)
-
-        L[ind_pos_eigenvalues] = L_minus
+        #if side == 'right':
+        #    L[ind_eigenvalues] = L_minus
+        #else:
+        #    L[ind_eigenvalues] = L_minus
+        
+        L[ind_eigenvalues] = L_minus
 
         # RHS for BCs
         dw_dt = S @ L + C
 
         RHS = np.zeros((self.DG_vars.num_states))
 
-        RHS[ind_der] = dw_dt[ind_der]
+        RHS[ind_der] = -dw_dt[ind_der]
         RHS[ind_spec] = -dWgivenLdt
 
-         # RHS for BCs
-        dw_dt = S @ L + C
-
-        RHS[ind_der] = dw_dt[ind_der]
-        RHS[ind_spec] = -dWgivenLdt
-
+        #if self.form[side] == 'primitive':
         RHS = P @ RHS
 
         return RHS
 
-    def get_BC_rhs(self, t, q, source):
+    def get_BC_rhs(
+        self, 
+        t: float, 
+        q: np.ndarray = None, 
+        source: np.ndarray = None
+        ):
         """Compute the boundary condition right hand side."""
 
         q = q.reshape(
@@ -144,12 +184,15 @@ class CharacteristicDirichletBoundaryConditions(BaseBoundaryConditions):
         C = source[:, 0, 0]
 
         # Get the primitive and conservative states and derivative
-        q_left, w_left, w_left_diff = \
-            self._get_primitive_and_conservative_state(t=t, q=q, side='left')      
-
+        q_left, w_left, w_left_diff = self._get_primitive_and_conservative_state(
+            t=t, 
+            prim_state=q, 
+            side='left'
+        )
+        
         # Get the transformation matrices
-        P, P_inv, A, S, S_inv, Lambda = \
-            self._get_matrices(t=t, q=q_left, C=C, side='left')
+        P, P_inv, A, S, S_inv, Lambda, C = \
+            self._get_matrices(t=t, q=w_left, C=C, side='left')
 
         # Indices of positive and negative eigenvalues
         ind_neg_eigenvalues = np.where(Lambda.diagonal() < 0)[0]
@@ -157,7 +200,7 @@ class CharacteristicDirichletBoundaryConditions(BaseBoundaryConditions):
 
         # Indices where BCs are to be derived and specified
         ind_der, ind_spec = \
-            self._get_derived_and_specified_indices(t=t, q=q_left, side='left')
+            self._get_derived_and_specified_indices(t=t, q=w_left, side='left')
 
         L = Lambda @ S_inv @ w_left_diff
 
@@ -171,7 +214,7 @@ class CharacteristicDirichletBoundaryConditions(BaseBoundaryConditions):
         # positive eigenvalue contriubtions
         dWgivenLdt = self._get_specified_BCs(
             t=t, 
-            q=q_left, 
+            q=w_left, 
             side='left', 
             ind_spec=ind_spec
         )
@@ -181,13 +224,14 @@ class CharacteristicDirichletBoundaryConditions(BaseBoundaryConditions):
             L=L, 
             dWgivenLdt=dWgivenLdt, 
             k=k, 
-            ind_pos_eigenvalues=ind_pos_eigenvalues, 
+            ind_eigenvalues=ind_pos_eigenvalues, 
             ind_der=ind_der, 
             ind_spec=ind_spec, 
             S=S, 
             C=C, 
             P=P
         )
+
             
         ###### Right boundary ######
 
@@ -196,11 +240,11 @@ class CharacteristicDirichletBoundaryConditions(BaseBoundaryConditions):
 
         # Get the primitive and conservative states and derivative
         q_right, w_right, w_right_diff = \
-            self._get_primitive_and_conservative_state(t=t, q=q, side='right')    
+            self._get_primitive_and_conservative_state(t=t, prim_state=q, side='right')    
 
         # Get the transformation matrices
-        P, P_inv, A, S, S_inv, Lambda = \
-            self._get_matrices(t=t, q=q_right, C=C, side='right')
+        P, P_inv, A, S, S_inv, Lambda, C = \
+            self._get_matrices(t=t, q=w_right, C=C, side='right')
 
         # Indices of positive and negative eigenvalues
         ind_neg_eigenvalues = np.where(Lambda.diagonal() < 0)[0]
@@ -208,7 +252,7 @@ class CharacteristicDirichletBoundaryConditions(BaseBoundaryConditions):
 
         # Indices where BCs are to be derived and specified
         ind_der, ind_spec = \
-            self._get_derived_and_specified_indices(t=t, q=q_right, side='right')
+            self._get_derived_and_specified_indices(t=t, q=w_right, side='right')
 
         L = Lambda @ S_inv @ w_right_diff
 
@@ -216,13 +260,13 @@ class CharacteristicDirichletBoundaryConditions(BaseBoundaryConditions):
         s = S[ind_spec, :]
         c = C[ind_spec]
         
-        # negative eigenvalue contriubtions
-        k = s[:, ind_neg_eigenvalues] @ L[ind_neg_eigenvalues] + c
+        # positive eigenvalue contriubtions
+        k = s[:, ind_pos_eigenvalues] @ L[ind_pos_eigenvalues] + c
 
         # positive eigenvalue contriubtions
         dWgivenLdt = self._get_specified_BCs(
             t=t, 
-            q=q_right, 
+            q=w_right, 
             side='right', 
             ind_spec=ind_spec
         )
@@ -232,12 +276,13 @@ class CharacteristicDirichletBoundaryConditions(BaseBoundaryConditions):
             L=L, 
             dWgivenLdt=dWgivenLdt, 
             k=k, 
-            ind_pos_eigenvalues=ind_pos_eigenvalues, 
+            ind_eigenvalues=ind_neg_eigenvalues, 
             ind_der=ind_der, 
             ind_spec=ind_spec, 
             S=S, 
             C=C, 
-            P=P
+            P=P,
+            side='right'
         )
         
         '''

@@ -76,10 +76,25 @@ class BaseModel():
             source=self.source,
             transform_matrices=self.transform_matrices,
         )
+
+        # initialize steady state BCs
+        self.steady_state_BCs = factories.get_boundary_conditions(
+            DG_vars=self.DG_vars,
+            BC_args={
+                'type': 'dirichlet',
+                'treatment': 'naive',
+            },
+            numerical_flux=self.numerical_flux,
+            boundary_conditions=self.steady_state_boundary_conditions,
+            flux=self.flux,
+        )
         
         # Initialize the time integrator
-        self.step_size = time_integrator_args.get('step_size')
-        time_integrator_args.pop('step_size')
+        if time_integrator_args.get('step_size') is not None:
+            self.step_size = time_integrator_args.get('step_size')
+            time_integrator_args.pop('step_size')
+        else:
+            self.step_size = 0.00001
 
         self.time_integrator = factories.get_time_integrator(
             DG_vars=self.DG_vars,
@@ -163,6 +178,8 @@ class BaseModel():
 
         # Compute the flux
         flux = self.flux(q)
+
+        conv = np.array(self.primitive_to_conservative(q))
         
         # Compute the numerical flux
         numerical_flux = self.numerical_flux(
@@ -174,7 +191,35 @@ class BaseModel():
             
         # Compute the source term
         source = self.source(t, q)
+    
+        if True:#self.steady_state_solve:
+            
+            # Compute boundary conditions
+            q_boundary=q[:, [self.DG_vars.vmapI, self.DG_vars.vmapO]]
+            flux_boundary=flux[:, [self.DG_vars.vmapI, self.DG_vars.vmapO]]
 
+            numerical_flux[:, self.DG_vars.mapI], numerical_flux[:, self.DG_vars.mapO] = \
+                self.steady_state_BCs.apply_boundary_conditions(
+                    t=t, 
+                    q_boundary=q_boundary,
+                    flux_boundary=flux_boundary,
+                    step_size=self.step_size,
+                    )
+        
+        else:
+            
+            # Compute boundary conditions
+            q_boundary=q[:, [self.DG_vars.vmapI, self.DG_vars.vmapO]]
+            flux_boundary=flux[:, [self.DG_vars.vmapI, self.DG_vars.vmapO]]
+
+            numerical_flux[:, self.DG_vars.mapI], numerical_flux[:, self.DG_vars.mapO] = \
+                self.BCs.apply_boundary_conditions(
+                    t=t, 
+                    q_boundary=q_boundary,
+                    flux_boundary=flux_boundary,
+                    step_size=self.step_size,
+                    )
+            
         '''
         # Compute boundary conditions
         q_boundary=q[:, [self.DG_vars.vmapI, self.DG_vars.vmapO]]
@@ -196,6 +241,7 @@ class BaseModel():
                 step_size=self.step_size,
                 )
         '''
+        
         d_flux = self.DG_vars.nx * (flux[:, self.DG_vars.vmapM] - numerical_flux)
 
         # Reshape the flux and source terms
@@ -211,6 +257,7 @@ class BaseModel():
             (self.DG_vars.num_states, self.DG_vars.Np, self.DG_vars.K), 
             order='F'
             )
+        
 
         # Compute the right hand side
         rhs = \
@@ -218,24 +265,34 @@ class BaseModel():
             + self.DG_vars.LIFT @ (np.multiply(self.DG_vars.Fscale, d_flux)) \
             + source
 
-        
-        # Compute boundary conditions
-        BC_rhs_left, BC_rhs_right = self.BCs.get_BC_rhs(
-            t=t,
-            q=q,
-            source=source,
-        )
-
-        # left boundary
-        rhs[:, 0, 0] = BC_rhs_left
-
-        # right boundary
-        rhs[:, -1, -1] = BC_rhs_right
-
         rhs = rhs.reshape(
             (self.DG_vars.num_states, self.DG_vars.Np * self.DG_vars.K), 
             order='F'
             )
+        
+
+        # if self.steady_state_solve:
+        '''
+        q_boundary=q[:, [self.DG_vars.vmapI, self.DG_vars.vmapO]]
+
+        BCs = self.steady_state_boundary_conditions(q=q_boundary)
+        
+        rhs[:, [self.DG_vars.vmapI, self.DG_vars.vmapO]] = BCs
+        #print(rhs[:, [self.DG_vars.vmapI, self.DG_vars.vmapO]])
+        '''
+        if False: #not self.steady_state_solve:
+            # Compute boundary conditions
+            BC_rhs_left, BC_rhs_right = self.BCs.get_BC_rhs(
+                t=t,
+                q=q,
+                source=source,
+            )
+
+            # left boundary
+            rhs[:, self.DG_vars.vmapI] = BC_rhs_left
+
+            # right boundary
+            rhs[:, self.DG_vars.vmapO] = BC_rhs_right
 
         return rhs
 
@@ -253,8 +310,10 @@ class BaseModel():
         """
         sol = []
 
+        self.steady_state_solve = False
         # Compute the steady state solution
         if steady_state_args is not None:
+            self.steady_state_solve = True
             q_init = compute_steady_state(
                 q=q_init,
                 rhs=self.compute_rhs,
@@ -263,6 +322,8 @@ class BaseModel():
             )
 
             q_init = self.stabilizer(q_init)
+
+            self.steady_state_solve = False
         
         # Set initial condition
         sol.append(q_init)

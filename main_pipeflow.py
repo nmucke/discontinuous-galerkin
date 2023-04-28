@@ -102,20 +102,79 @@ class PipeflowEquations(BaseModel):
         init = np.ones((self.DG_vars.num_states, x.shape[0]))
 
         init[0] = self.pressure_to_density(self.p_ref) * self.A
-        init[1] = init[0] * 4.0
+        init[1] = init[0] * 6.0
 
         return init
     
-    def boundary_conditions(self, t, q=None):
+    def steady_state_boundary_conditions(self, t=0, q=None):
         """Compute the boundary conditions."""
 
         #rho_out = self.pressure_to_density(self.p_ref)
+        '''
+        q_left = q[:, 0]
+        q_right = q[:, -1]
+
+        #rho_A_right = self.pressure_to_density(self.p_ref) * self.A
+
+        p_right = self.density_to_pressure(q_right[0]/self.A)
+        u_left = q_left[1]/q_left[0]
+
+        BCs = np.zeros((self.DG_vars.num_states, 2))
+
+        # left rho boundary
+        BCs[0, 0] = 0.
+
+        # right rho boundary
+        BCs[0, 1] = q_right[0] - self.pressure_to_density(self.p_ref) * self.A
+
+        # left u boundary
+        BCs[1, 0] = q_left[1] - q_left[0] * 4.
+
+        # right u boundary
+        BCs[1, 1] = 0.
 
         u = q[1]/q[0]
+        p = self.density_to_pressure(q[0]/self.A)
         
         BC_state_1 = {
             'left': None,
-            'right': 0.#self.p_ref,
+            'right': (p-self.p_ref)/self.step_size
+        }
+        BC_state_2 = {
+            'left': (u-4.5)/self.step_size,#4.0 + 0.5,#*np.sin(0.2*t)),
+            'right': None
+        }
+
+        BCs = [BC_state_1, BC_state_2]
+        '''
+        
+        
+        u = q[1]/q[0]
+        p = self.density_to_pressure(q[0]/self.A)
+        
+        BC_state_1 = {
+            'left': None,
+            'right': self.pressure_to_density(self.p_ref) * self.A
+        }
+        
+        BC_state_2 = {
+            'left': q[0, 0]*3,#4.0 + 0.5,#*np.sin(0.2*t)),
+            'right': None
+        }
+
+        BCs = [BC_state_1, BC_state_2]
+
+        return BCs
+    
+    def boundary_conditions(self, t, q=None):
+        """Compute the boundary conditions."""
+        
+        u = q[1]/q[0]
+        p = self.density_to_pressure(q[0]/self.A)
+        
+        BC_state_1 = {
+            'left': None,
+            'right': (p-self.p_ref)/self.step_size
         }
         BC_state_2 = {
             'left': (u-4.5)/self.step_size,#4.0 + 0.5,#*np.sin(0.2*t)),
@@ -194,7 +253,7 @@ if __name__ == '__main__':
 
     numerical_flux_args = {
         'type': 'lax_friedrichs',
-        'alpha': 0.5,
+        'alpha': 0.0,
     }
     
     '''
@@ -251,7 +310,7 @@ if __name__ == '__main__':
             t=0, 
             q_init=init, 
             t_final=t_final, 
-            steady_state_args=None
+            steady_state_args=None#steady_state
         )
 
         x = np.linspace(0, 2000, 2000)
