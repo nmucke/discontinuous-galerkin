@@ -142,9 +142,8 @@ class CharacteristicDirichletBoundaryConditions(BaseBoundaryConditions):
         return dWgivenLdt
 
     def _compute_RHS(self, s, L, dWgivenLdt, k, ind_eigenvalues, ind_der, ind_spec, S, C, P, side='left'):
-        
-        L_minus = np.linalg.solve(s[:, ind_eigenvalues], -dWgivenLdt -k)
 
+        L_minus = np.linalg.solve(s[:, ind_eigenvalues], -dWgivenLdt -k)
         #if side == 'right':
         #    L[ind_eigenvalues] = L_minus
         #else:
@@ -172,7 +171,7 @@ class CharacteristicDirichletBoundaryConditions(BaseBoundaryConditions):
         source: np.ndarray = None
         ):
         """Compute the boundary condition right hand side."""
-
+        
         q = q.reshape(
             (self.DG_vars.num_states, self.DG_vars.Np, self.DG_vars.K), 
             order='F'

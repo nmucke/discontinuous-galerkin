@@ -56,11 +56,11 @@ class BaseModel():
         # Check if the system Jacobian is implemented
         if getattr(self.system_jacobian, '__isabstractmethod__', False):
             self.system_jacobian = None
-
+        
         # Initialize the numerical flux
         self.numerical_flux = factories.get_numerical_flux(
             DG_vars=self.DG_vars,
-            numerical_flux_args=numerical_flux_args,
+            numerical_flux_args=numerical_flux_args,#, 'alpha': 0.5},#
             system_jacobian=self.system_jacobian,
             eigen=self.eigen,
         )
@@ -179,7 +179,7 @@ class BaseModel():
         # Compute the flux
         flux = self.flux(q)
 
-        conv = np.array(self.primitive_to_conservative(q))
+        #conv = np.array(self.primitive_to_conservative(q))
         
         # Compute the numerical flux
         numerical_flux = self.numerical_flux(
@@ -192,7 +192,7 @@ class BaseModel():
         # Compute the source term
         source = self.source(t, q)
     
-        if True:#self.steady_state_solve:
+        if True:# self.steady_state_solve:
             
             # Compute boundary conditions
             q_boundary=q[:, [self.DG_vars.vmapI, self.DG_vars.vmapO]]
@@ -206,8 +206,19 @@ class BaseModel():
                     step_size=self.step_size,
                     )
         
-        else:
+        elif False: # Compute boundary conditions
+            q_boundary=q[:, [self.DG_vars.vmapI, self.DG_vars.vmapO]]
+            flux_boundary=flux[:, [self.DG_vars.vmapI, self.DG_vars.vmapO]]
+
+            numerical_flux[:, self.DG_vars.mapI], numerical_flux[:, self.DG_vars.mapO] = \
+                self.BCs.apply_boundary_conditions(
+                    t=t, 
+                    q_boundary=q_boundary,
+                    flux_boundary=flux_boundary,
+                    step_size=self.step_size,
+                    )
             
+            '''
             # Compute boundary conditions
             q_boundary=q[:, [self.DG_vars.vmapI, self.DG_vars.vmapO]]
             flux_boundary=flux[:, [self.DG_vars.vmapI, self.DG_vars.vmapO]]
@@ -219,6 +230,7 @@ class BaseModel():
                     flux_boundary=flux_boundary,
                     step_size=self.step_size,
                     )
+            '''
             
         '''
         # Compute boundary conditions
@@ -270,6 +282,52 @@ class BaseModel():
             order='F'
             )
         
+        if self.steady_state_solve:
+            #rhs[:, 0] = 0
+            #rhs[:, -1] = 0
+
+            bc_left = np.zeros((3))
+            bc_right = np.zeros((3))
+
+            bc_mask_left = np.zeros((self.DG_vars.num_states, ))
+            bc_mask_right = np.zeros((self.DG_vars.num_states, ))
+            for i in range(self.DG_vars.num_states):
+                for edge, idx in zip(['left', 'right'], [0, -1]):
+                    bc = self.boundary_conditions(t, q_boundary)[i][edge]
+                    if edge == 'left' and bc is not None:
+                        bc_left[i] = bc[0]
+                        bc_mask_left[i] = 1
+
+                        rhs[i, 0] = q[i, 0] - bc_left[i]
+
+                    elif edge == 'right' and bc is not None:
+                        bc_right[i] = bc
+                        bc_mask_right[i] = 1
+
+                        rhs[i, -1] = q[i, -1] - bc_right[i]
+            
+            '''
+            bc_mask_right = bc_mask_right.astype(bool)
+            bc_mask_left = bc_mask_left.astype(bool)
+            D, L, R = self.eigen(q[:,0])
+            R_inv = np.linalg.inv(R)
+            D_vec = np.diag(D)
+            for i in range(self.DG_vars.num_states):
+                if self.DG_vars.nx[0] * D_vec[i] > 0:
+                    lol = R_inv[:, i] * (bc_left - q[:, 0])
+                    rhs[i, 0] =(bc_left - q[:, 0])# lol[i]
+                    
+            print(rhs[i, 0])
+
+            D, L, R = self.eigen(q[:,-1])
+            R_inv = np.linalg.inv(R)
+            D_vec = np.diag(D)
+            for i in range(self.DG_vars.num_states):
+                if self.DG_vars.nx[-1] * D_vec[i] > 0:
+                    lol = R_inv[:, i] * (bc_right - q[:, -1])
+                    rhs[bc_mask_right, 0] = (bc_right - q[:, -1])#lol[bc_mask_right]
+            '''
+            
 
         # if self.steady_state_solve:
         '''
@@ -280,7 +338,7 @@ class BaseModel():
         rhs[:, [self.DG_vars.vmapI, self.DG_vars.vmapO]] = BCs
         #print(rhs[:, [self.DG_vars.vmapI, self.DG_vars.vmapO]])
         '''
-        if False: #not self.steady_state_solve:
+        if False:#not self.steady_state_solve:
             # Compute boundary conditions
             BC_rhs_left, BC_rhs_right = self.BCs.get_BC_rhs(
                 t=t,
@@ -325,6 +383,9 @@ class BaseModel():
 
             self.steady_state_solve = False
         
+        #rho_g_A_g, rho_l_A_l, rho_m_u_m = self.primitive_to_conservative(q_init)
+    
+
         # Set initial condition
         sol.append(q_init)
 

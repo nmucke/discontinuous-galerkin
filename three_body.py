@@ -30,8 +30,8 @@ r2=np.array(r2,dtype="float64")
 #Find Centre of Mass
 r_com=(m1*r1+m2*r2)/(m1+m2)
 #Define initial velocities
-v1=[0.01,0.01,0] #m/s
-v2=[-0.05,0,-0.1] #m/s
+v1=[0.1,0.1,0] #m/s
+v2=[0,0,0.1] #m/s
 #Convert velocity vectors to arrays
 v1=np.array(v1,dtype="float64")
 v2=np.array(v2,dtype="float64")
@@ -89,7 +89,7 @@ m3=1.0 #Third Star
 r3=[0,1,0] #m
 r3=np.array(r3,dtype="float64")
 #Velocity of the Third Star
-v3=[0,-0.01,0]
+v3=[0,0.1,0]
 v3=np.array(v3,dtype="float64")
 
 #Update COM formula
@@ -135,24 +135,24 @@ r3_sol=three_body_sol[:,6:9]
 #Mass of the Third Star
 m3=1.0 #Third Star
 #Position of the Third Star
-r3=[0,1.0001,0] #m
+r3=[0,.1,0] #m
 r3=np.array(r3,dtype="float64")
 #Velocity of the Third Star
-v3=[0,-0.01,0]
+v3=[0,-0.000001,0]
 v3=np.array(v3,dtype="float64")
 
 #Package initial parameters
 init_params=np.array([r1,r2,r3,v1,v2,v3]) #Initial parameters
 init_params=init_params.flatten() #Flatten to make 1D array
-time_span=np.linspace(0,20,500) #20 orbital periods and 500 points
+time_span=np.linspace(0,20.,500) #20 orbital periods and 500 points
 #Run the ODE solver
 three_body_sol=sci.integrate.odeint(ThreeBodyEquations,init_params,time_span,args=(G,m1,m2,m3))
 
-r1_sol_new=three_body_sol[:,:3]
-r2_sol_new=three_body_sol[:,3:6]
-r3_sol_new=three_body_sol[:,6:9]
+r1_sol=three_body_sol[:,:3]
+r2_sol=three_body_sol[:,3:6]
+r3_sol=three_body_sol[:,6:9]
 
-'''
+
 #Create figure
 fig=plt.figure(figsize=(15,15))
 #Create 3D axes
@@ -172,7 +172,7 @@ ax.set_zlabel("z-coordinate",fontsize=14)
 ax.set_title("Visualization of orbits of stars in a two-body system\n",fontsize=14)
 ax.legend(loc="upper left",fontsize=14)
 plt.show()
-'''
+
 
 
 

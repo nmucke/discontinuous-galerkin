@@ -11,7 +11,7 @@ def steady_state_rhs(q, rhs, DG_vars):
         
         q = np.reshape(q, (DG_vars.num_states, DG_vars.Np*DG_vars.K), order='F')
         pde_rhs = rhs(t=0, q=q).flatten('F')
-        
+
         return pde_rhs
 
 def compute_steady_state(q, rhs, newton_params, DG_vars):
@@ -29,6 +29,7 @@ def compute_steady_state(q, rhs, newton_params, DG_vars):
             (DG_vars.num_states, DG_vars.Np*DG_vars.K),
             order='F'
             )
+
     return q
 
         

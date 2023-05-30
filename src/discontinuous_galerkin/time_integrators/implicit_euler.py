@@ -130,8 +130,21 @@ class ImplicitEuler(BaseTimeIntegrator):
                 #order='F'
                 #)
             ).flatten('F')
-        
-        return (time_derivative - pde_rhs)
+        time_derivative = np.reshape(
+            time_derivative,
+            (self.DG_vars.num_states, self.DG_vars.Np*self.DG_vars.K),
+            order='F'
+            )
+        pde_rhs = np.reshape(
+            pde_rhs,
+            (self.DG_vars.num_states, self.DG_vars.Np*self.DG_vars.K),
+            order='F'
+            )
+        residual = pde_rhs
+        residual[:, 1:-1] = time_derivative[:, 1:-1] - pde_rhs[:, 1:-1]
+
+        residual = residual.flatten('F')
+        return residual# (time_derivative - pde_rhs)
 
     def time_step(self, t, q, step_size, rhs):
         """Take a time step."""

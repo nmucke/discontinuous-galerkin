@@ -36,6 +36,34 @@ class PipeflowEquations(BaseModel):
 
         return (p - self.p_ref)/self.c**2 + self.rho_ref
     
+    def eigen(self, q):
+        """Compute the eigenvalues and eigenvectors of the flux Jacobian."""
+
+        rho = q[0]/self.A
+        u = q[1]/q[0]
+
+        L = np.zeros((self.DG_vars.num_states, self.DG_vars.num_states))
+        R = np.zeros((self.DG_vars.num_states, self.DG_vars.num_states))
+        D = np.zeros((self.DG_vars.num_states, self.DG_vars.num_states))
+
+        L[0, 0] = 1
+        L[1, 0] = -1/rho/self.c
+        L[0, 1] = 1
+        L[1, 1] = 1/rho/self.c
+        L *= 1/2
+
+        R[0, 0] = 1
+        R[1, 0] = 1
+        R[0, 1] = -rho*self.c
+        R[1, 1] = rho*self.c
+
+        D[0, 0] = u - self.c
+        D[1, 0] = 0
+        D[0, 1] = 0
+        D[1, 1] = u + self.c
+
+        return D, L, R
+    
     def transform_matrices(self, t, q):
         """Compute the conservative to primitive transform matrices."""
 
@@ -102,7 +130,7 @@ class PipeflowEquations(BaseModel):
         init = np.ones((self.DG_vars.num_states, x.shape[0]))
 
         init[0] = self.pressure_to_density(self.p_ref) * self.A
-        init[1] = init[0] * 6.0
+        init[1] = init[0] * 4.0
 
         return init
     
@@ -158,7 +186,7 @@ class PipeflowEquations(BaseModel):
         }
         
         BC_state_2 = {
-            'left': q[0, 0]*3,#4.0 + 0.5,#*np.sin(0.2*t)),
+            'left': q[0, 0]*4.5,#4.0 + 0.5,#*np.sin(0.2*t)),
             'right': None
         }
 
@@ -171,13 +199,13 @@ class PipeflowEquations(BaseModel):
         
         u = q[1]/q[0]
         p = self.density_to_pressure(q[0]/self.A)
-        
+
         BC_state_1 = {
             'left': None,
-            'right': (p-self.p_ref)/self.step_size
+            'right': self.pressure_to_density(self.p_ref)#(p-self.p_ref)/self.step_size
         }
         BC_state_2 = {
-            'left': (u-4.5)/self.step_size,#4.0 + 0.5,#*np.sin(0.2*t)),
+            'left': q[0]*4.5,#(u-4.5)/self.step_size,#4.0 + 0.5,#*np.sin(0.2*t)),
             'right': None
         }
 
@@ -252,8 +280,8 @@ if __name__ == '__main__':
     }
 
     numerical_flux_args = {
-        'type': 'lax_friedrichs',
-        'alpha': 0.0,
+        'type': 'roe',
+        #'alpha': 0.0,
     }
     
     '''
@@ -280,7 +308,7 @@ if __name__ == '__main__':
 
     BC_args = {
         'type': 'dirichlet',
-        'treatment': 'characteristic',
+        'treatment': 'naive',
         'form': {'left': 'primitive', 'right': 'primitive'},
     }
 

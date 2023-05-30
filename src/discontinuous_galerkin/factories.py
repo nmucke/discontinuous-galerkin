@@ -127,8 +127,20 @@ def get_numerical_flux(
 
     numerical_flux_args = \
         {key: numerical_flux_args[key] for key in numerical_flux_args if key != 'type'}
-    numerical_flux = factory[numerical_flux_type](DG_vars, **numerical_flux_args)
     
+    if numerical_flux_type == 'roe':
+        numerical_flux = factory[numerical_flux_type](
+            DG_vars, 
+            system_jacobian=system_jacobian,
+            eigen=eigen,
+            **numerical_flux_args
+            )
+    else:
+        numerical_flux = factory[numerical_flux_type](
+            DG_vars, 
+            **numerical_flux_args
+            )
+
     return numerical_flux
 
 def check_if_everything_is_implemented_for_roe_flux(

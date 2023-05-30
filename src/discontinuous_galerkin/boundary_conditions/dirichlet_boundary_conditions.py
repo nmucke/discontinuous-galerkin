@@ -41,7 +41,6 @@ class DirichletBoundaryConditions(BaseBoundaryConditions):
                 if bc is not None:
                     ghost_states[i, idx] = -q_boundary[i, idx] + 2 * bc
             
-
         return ghost_states
 
     def _compute_ghost_flux(self, ghost_states):

@@ -74,7 +74,6 @@ class RoeFlux(BaseNumericalFlux):
         # Compute the average of the fluxes
         flux_average = self._average_operator(flux_inside, flux_outside)
 
-
         # Compute the jump of the states
         q_roe_average = self._average_operator(q_inside, q_outside)
         #rho_inner = q_inside[0, :]
