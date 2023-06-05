@@ -33,8 +33,70 @@ class PipeflowEquations(BaseModel):
 
         self.rho_l = 1000. # kg/m^3
 
-        self.form = 'conservative'
-        
+        self.conservative_or_primitive = 'conservative'
+
+    def eigen(self, q):
+        """Compute the eigenvalues and eigenvectors of the flux Jacobian."""
+
+        if self.conservative_or_primitive == 'conservative':
+            rho_g_A_g = q[0]
+            rho_l_A_l = q[1]
+            rho_m_u_m = q[2]
+
+            A_l, p, u_m = self.conservative_to_primitive(q=q)
+        elif self.conservative_or_primitive == 'primitive':
+            A_l = q[0]
+            p = q[1]
+            u_m = q[2]
+
+            rho_g_A_g, rho_l_A_l, rho_m_u_m = self.primitive_to_conservative(q=q)
+
+        rho_g = self.pressure_to_density(p)
+
+        A_g = self.A - A_l
+
+        rho_m = rho_g * A_g + self.rho_l * A_l
+
+        c_g_squared = rho_g * self.T_norm / self.rho_g_norm / self.T_norm
+
+        L = np.zeros((self.DG_vars.num_states, self.DG_vars.num_states))
+        R = np.zeros((self.DG_vars.num_states, self.DG_vars.num_states))
+        D = np.zeros((self.DG_vars.num_states, self.DG_vars.num_states))
+
+        term_1 = np.sqrt(A_l * self.rho_l * c_g_squared + A_g * p)
+        term_2 = self.A * np.sqrt(c_g_squared) * np.sqrt(p)
+
+        R[0, :] = np.array(
+            [-np.sqrt(A_g) * A_l * term_1 / term_2, np.sqrt(A_g) * A_l * term_1 / term_2, 1.]
+            )
+        R[1, :] = np.array(
+            [-np.sqrt(p) * term_1 / term_2, np.sqrt(p) * term_1 / term_2, 0.]
+            )
+        R[2, :] = np.array(
+            [1., 1., 0.]
+            ) 
+
+
+        L[0, :] = np.array(
+            [0, -np.sqrt(A_g * c_g_squared) / (2 * np.sqrt(p) * term_1), 0.5]
+            )
+        L[1, :] = np.array(
+            [0, np.sqrt(A_g * c_g_squared) / (2 * np.sqrt(p) * term_1), 0.5]
+            )
+        L[2, :] = np.array(
+            [1, - A_g * A_l / (self.A * p), 0]
+            ) 
+
+        term_1 = A_g**(3/2) * p * u_m
+        term_2 = self.A * np.sqrt(c_g_squared) * np.sqrt(p) * np.sqrt(A_l * self.rho_l * c_g_squared + A_g * p)
+        term_3 = np.sqrt(A_g) * A_l * c_g_squared * self.rho_l * u_m
+        term_4 = A_g**(3/2) * p + np.sqrt(A_g) * A_l * c_g_squared * self.rho_l
+
+        D[0, 0] = (term_1 - term_2 + term_3) / term_4
+        D[1, 1] = (term_1 + term_2 + term_3) / term_4
+        D[2, 2] = u_m
+
+        return D, L, R
 
     def density_to_pressure(self, rho):
         """Compute the pressure from the density."""
@@ -46,6 +108,15 @@ class PipeflowEquations(BaseModel):
         """Compute the density from the pressure."""
 
         return self.rho_g_norm * self.T_norm / self.p_norm * p / self.T_norm
+    
+
+    def BC_equations(self, q, side='left'):
+
+        if side == 'left':
+            return np.array([0, q[1]/q[0]-4.5])
+
+        elif side == 'right':
+            return np.array([q[0]/self.A - self.rho_ref, 0])
     
     def _primitive_to_conservative(self, q):
         """Compute the conservative variables from the primitive variables."""
@@ -619,8 +690,8 @@ if __name__ == '__main__':
     }
 
     numerical_flux_args = {
-        'type': 'lax_friedrichs',
-        'alpha': 0.5,
+        'type': 'roe',
+        #'alpha': 0.5,
     }
     
     stabilizer_args = {

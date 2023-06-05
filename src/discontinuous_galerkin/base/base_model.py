@@ -63,6 +63,8 @@ class BaseModel():
             numerical_flux_args=numerical_flux_args,#, 'alpha': 0.5},#
             system_jacobian=self.system_jacobian,
             eigen=self.eigen,
+            flux=self.flux,
+            BC_equations=self.BC_equations,
         )
         
         # Initialize the boundary conditions
@@ -188,11 +190,21 @@ class BaseModel():
             flux_inside=flux[:, self.DG_vars.vmapM],
             flux_outside=flux[:, self.DG_vars.vmapP],
             )
+        pdb.set_trace()
+        numerical_flux[:, self.DG_vars.vmapI] = self.numerical_flux(
+            q_inside=q[:, self.DG_vars.vmapM], 
+            q_outside=q[:, self.DG_vars.vmapP],
+            flux_inside=flux[:, self.DG_vars.vmapM],
+            flux_outside=flux[:, self.DG_vars.vmapP],
+            )
+        
+
+
             
         # Compute the source term
         source = self.source(t, q)
     
-        if True:# self.steady_state_solve:
+        if False:# self.steady_state_solve:
             
             # Compute boundary conditions
             q_boundary=q[:, [self.DG_vars.vmapI, self.DG_vars.vmapO]]
@@ -282,7 +294,7 @@ class BaseModel():
             order='F'
             )
         
-        if self.steady_state_solve:
+        if False:#self.steady_state_solve:
             #rhs[:, 0] = 0
             #rhs[:, -1] = 0
 
@@ -368,6 +380,8 @@ class BaseModel():
         """
         sol = []
 
+        self.t = 0
+
         self.steady_state_solve = False
         # Compute the steady state solution
         if steady_state_args is not None:
@@ -384,7 +398,7 @@ class BaseModel():
             self.steady_state_solve = False
         
         #rho_g_A_g, rho_l_A_l, rho_m_u_m = self.primitive_to_conservative(q_init)
-    
+
 
         # Set initial condition
         sol.append(q_init)
@@ -407,6 +421,8 @@ class BaseModel():
             if t + self.step_size - 1e-1 > t_final:
                 self.step_size = t_final - t
             
+            self.t = t + self.step_size
+
             sol_, t = self.time_integrator(
                 t=t_vec[-1], 
                 q=sol[-1],

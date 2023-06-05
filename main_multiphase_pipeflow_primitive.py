@@ -48,6 +48,46 @@ class PipeflowEquations(BaseModel):
 
         return self.rho_g_norm * self.T_norm / self.p_norm * p / self.T
     
+
+    def BC_equations(self, q, side='left'):
+
+        A_l = q[0]
+        p = q[1]
+        u_m = q[2]
+
+
+        t_start = 50
+        t_end = 60
+
+        b = 20.
+        a = 0.2
+        # a increases linearly from 0.2 to 0.4 over 10 seconds
+        if self.t < t_end and self.t >= t_start:
+            t_ = self.t - t_start
+            a = 0.2 + 0.02 * t_ / 10
+        elif self.t >= t_end:
+            a = 0.4 #+ 0.1*np.sin(t/200)
+        else:
+            a = 0.2
+
+        if side == 'left':
+
+            A_g = self.A - A_l
+
+            rho_g = self.pressure_to_density(p)
+
+            rho_m = rho_g * A_g + self.rho_l * A_l
+
+            gas_mass_flux = rho_g * u_m * A_g
+            liquid_mass_flux = self.rho_l * u_m * A_l
+            
+
+            return np.array([gas_mass_flux-a, liquid_mass_flux-b, 0.])
+
+        elif side == 'right':
+
+            return np.array([0, 0, p-self.p_outlet])
+        
     def conservative_to_primitive(self, q):
         """Compute the primitive variables from the conservative variables."""
 
@@ -659,7 +699,7 @@ if __name__ == '__main__':
     #    'alpha': 0.5,
     #}
     numerical_flux_args = {
-        'type': 'roe',
+        'type': 'lax_friedrichs',
     }
     
     
@@ -676,7 +716,7 @@ if __name__ == '__main__':
     '''
     time_integrator_args = {
         'type': 'implicit_euler',
-        'step_size': 10,
+        'step_size': 5,
         'newton_params':{
             'solver': 'direct',
             'max_newton_iter': 200,
@@ -706,7 +746,7 @@ if __name__ == '__main__':
     
     init = pipe_DG.initial_condition(pipe_DG.DG_vars.x.flatten('F'))
 
-    t_final = 10000.
+    t_final = 500.
     sol, t_vec = pipe_DG.solve(
         t=0, 
         q_init=init, 

@@ -1,6 +1,8 @@
 import numpy as np
 import pdb
 
+#import autograd.numpy as np
+#from autograd import grad, jacobian
 
 import matplotlib.pyplot as plt
 
@@ -55,6 +57,12 @@ class NewtonSolver(object):
                         
             return func(q)
         
+        def _solve_krylov(self, func, q):
+
+            # Compute the Jacobian
+
+            return q
+        
         def _solve_direct(self, func, q):
             """Solve the nonlinear problem using a direct solver."""
 
@@ -78,7 +86,7 @@ class NewtonSolver(object):
                 
                 # Update the solution
                 q = q + delta_q
-
+                
                 # Check for convergence
                 if np.max(np.abs(delta_q)) < self.newton_tol:
                     return q

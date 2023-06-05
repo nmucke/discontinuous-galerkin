@@ -31,16 +31,16 @@ class DirichletBoundaryConditions(BaseBoundaryConditions):
     def _compute_ghost_states(self, t, q_boundary):
         """Compute the ghost states."""
 
-        ghost_states = q_boundary
+        ghost_states = q_boundary.copy()
 
         for i in range(self.DG_vars.num_states):
             for edge, idx in zip(['left', 'right'], [0, -1]):
                 
                 bc = self.boundary_conditions(t, q_boundary)[i][edge]
                 
-                if bc is not None:
+                if bc is not None:                              
                     ghost_states[i, idx] = -q_boundary[i, idx] + 2 * bc
-            
+
         return ghost_states
 
     def _compute_ghost_flux(self, ghost_states):
@@ -51,7 +51,6 @@ class DirichletBoundaryConditions(BaseBoundaryConditions):
 
     def apply_boundary_conditions(self, t, q_boundary, flux_boundary, **args):
         """Apply the boundary conditions."""
-
         # Compute the ghost states
         ghost_states = self._compute_ghost_states(t, q_boundary)
         
@@ -64,7 +63,8 @@ class DirichletBoundaryConditions(BaseBoundaryConditions):
             q_outside = ghost_states,
             flux_inside = flux_boundary,
             flux_outside = ghost_flux,
-            on_boundary=True
+            on_boundary=True,
+            t = t
         )
         
         return numerical_flux[:, 0], numerical_flux[:, -1]

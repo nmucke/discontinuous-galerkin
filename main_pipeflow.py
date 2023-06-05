@@ -36,6 +36,15 @@ class PipeflowEquations(BaseModel):
 
         return (p - self.p_ref)/self.c**2 + self.rho_ref
     
+    def BC_equations(self, q, side='left'):
+
+        if side == 'left':
+            return np.array([0, q[1]/q[0]-4.5])
+
+        elif side == 'right':
+            return np.array([q[0]/self.A - self.rho_ref, 0])
+    
+    
     def eigen(self, q):
         """Compute the eigenvalues and eigenvectors of the flux Jacobian."""
 
@@ -204,8 +213,9 @@ class PipeflowEquations(BaseModel):
             'left': None,
             'right': self.pressure_to_density(self.p_ref)#(p-self.p_ref)/self.step_size
         }
+
         BC_state_2 = {
-            'left': q[0]*4.5,#(u-4.5)/self.step_size,#4.0 + 0.5,#*np.sin(0.2*t)),
+            'left': 50,#q[0, 0]*4.5,#(u-4.5)/self.step_size,#4.0 + 0.5,#*np.sin(0.2*t)),
             'right': None
         }
 
@@ -300,7 +310,7 @@ if __name__ == '__main__':
         'type': 'implicit_euler',
         'step_size': 0.05,
         'newton_params':{
-            'solver': 'krylov',
+            'solver': 'direct',
             'max_newton_iter': 200,
             'newton_tol': 1e-5
             }
@@ -318,7 +328,7 @@ if __name__ == '__main__':
     for polynomial_order in conv_list:
 
         #polynomial_order=8
-        num_elements = 150
+        num_elements = 50
 
         num_DOFs.append((polynomial_order+1)*num_elements)
 
@@ -333,7 +343,7 @@ if __name__ == '__main__':
 
         init = pipe_DG.initial_condition(pipe_DG.DG_vars.x.flatten('F'))
 
-        t_final = 20.0
+        t_final = 5.0
         sol, t_vec = pipe_DG.solve(
             t=0, 
             q_init=init, 
@@ -350,6 +360,8 @@ if __name__ == '__main__':
             u[:, t] = pipe_DG.evaluate_solution(x, sol_nodal=sol[1, :, t])
         rho = rho / pipe_DG.A
         u = u / rho / pipe_DG.A
+
+    print(rho[0, :])
     
     t_vec = np.arange(0, u.shape[1])
 

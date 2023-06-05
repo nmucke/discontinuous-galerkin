@@ -9,7 +9,7 @@ class LaxFriedrichsFlux(BaseNumericalFlux):
     
     This class contains the functionality for the Lax-Friedrichs numerical flux. 
     """
-    def __init__(self, DG_vars, alpha=0.5, C=lambda q: np.abs(q)):
+    def __init__(self, DG_vars, alpha=0.5, C=lambda q: np.abs(q), **kwargs):
         """Initialize the class."""
 
         super(LaxFriedrichsFlux).__init__()

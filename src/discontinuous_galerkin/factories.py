@@ -105,7 +105,9 @@ def get_numerical_flux(
     DG_vars, 
     numerical_flux_args: dict=None,
     system_jacobian=None,
-    eigen=None
+    eigen=None,
+    flux=None,
+    BC_equations=None,
     ):
     """Get instance of numerical flux."""
 
@@ -133,6 +135,8 @@ def get_numerical_flux(
             DG_vars, 
             system_jacobian=system_jacobian,
             eigen=eigen,
+            flux=flux,
+            BC_equations=BC_equations,
             **numerical_flux_args
             )
     else:
