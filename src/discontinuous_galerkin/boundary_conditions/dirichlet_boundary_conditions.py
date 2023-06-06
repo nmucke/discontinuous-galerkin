@@ -64,7 +64,6 @@ class DirichletBoundaryConditions(BaseBoundaryConditions):
             flux_inside = flux_boundary,
             flux_outside = ghost_flux,
             on_boundary=True,
-            t = t
         )
         
         return numerical_flux[:, 0], numerical_flux[:, -1]

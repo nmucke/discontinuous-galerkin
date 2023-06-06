@@ -5,6 +5,8 @@ from discontinuous_galerkin.start_up_routines.start_up_1D import StartUp1D
 import matplotlib.pyplot as plt
 import pdb
 
+from scipy.optimize import fsolve
+
 from matplotlib.animation import FuncAnimation
 
 
@@ -26,6 +28,22 @@ class PipeflowEquations(BaseModel):
         self.mu = 1.2e-5
         self.Cd = 5e-4
 
+        if kwargs.get('init_BCs') is not None:
+            q_left = kwargs.get('init_BCs')['left']
+            q_right = kwargs.get('init_BCs')['right']
+
+            self.BC_state_1 = {
+                'left': q_left[0],
+                'right': q_right[0]
+            }
+
+            self.BC_state_2 = {
+                'left': q_left[1],
+                'right': q_right[1]
+            }
+            
+
+
     def density_to_pressure(self, rho):
         """Compute the pressure from the density."""
         return self.c**2*(rho - self.rho_ref) + self.p_ref
@@ -36,43 +54,7 @@ class PipeflowEquations(BaseModel):
 
         return (p - self.p_ref)/self.c**2 + self.rho_ref
     
-    def BC_equations(self, q, side='left'):
 
-        if side == 'left':
-            return np.array([0, q[1]/q[0]-4.5])
-
-        elif side == 'right':
-            return np.array([q[0]/self.A - self.rho_ref, 0])
-    
-    
-    def eigen(self, q):
-        """Compute the eigenvalues and eigenvectors of the flux Jacobian."""
-
-        rho = q[0]/self.A
-        u = q[1]/q[0]
-
-        L = np.zeros((self.DG_vars.num_states, self.DG_vars.num_states))
-        R = np.zeros((self.DG_vars.num_states, self.DG_vars.num_states))
-        D = np.zeros((self.DG_vars.num_states, self.DG_vars.num_states))
-
-        L[0, 0] = 1
-        L[1, 0] = -1/rho/self.c
-        L[0, 1] = 1
-        L[1, 1] = 1/rho/self.c
-        L *= 1/2
-
-        R[0, 0] = 1
-        R[1, 0] = 1
-        R[0, 1] = -rho*self.c
-        R[1, 1] = rho*self.c
-
-        D[0, 0] = u - self.c
-        D[1, 0] = 0
-        D[0, 1] = 0
-        D[1, 1] = u + self.c
-
-        return D, L, R
-    
     def transform_matrices(self, t, q):
         """Compute the conservative to primitive transform matrices."""
 
@@ -86,15 +68,15 @@ class PipeflowEquations(BaseModel):
         S_inv = np.zeros((self.DG_vars.num_states, self.DG_vars.num_states))
         Lambda = np.zeros((self.DG_vars.num_states, self.DG_vars.num_states))
 
-        P[0, 0] = 1/self.c/self.c * self.A
-        P[1, 0] = 1/self.c/self.c * u * self.A
+        P[0, 0] = 1/self.c/self.c# * self.A
+        P[1, 0] = 1/self.c/self.c * u# * self.A
         P[0, 1] = 0
-        P[1, 1] = rho*self.A
+        P[1, 1] = rho#*self.A
 
-        P_inv[0, 0] = self.c*self.c/self.A
-        P_inv[1, 0] = -u/rho/self.A
+        P_inv[0, 0] = self.c*self.c#/self.A
+        P_inv[1, 0] = -u/rho#/self.A
         P_inv[0, 1] = 0
-        P_inv[1, 1] = 1/rho/self.A
+        P_inv[1, 1] = 1/rho#/self.A
 
         A[0, 0] = u
         A[1, 0] = 1/rho
@@ -118,7 +100,7 @@ class PipeflowEquations(BaseModel):
         Lambda[1, 1] = u + self.c
 
         return P, P_inv, A, S, S_inv, Lambda
-
+    
     def friction_factor(self, q):
         """Compute the friction factor."""
 
@@ -143,80 +125,48 @@ class PipeflowEquations(BaseModel):
 
         return init
     
-    def steady_state_boundary_conditions(self, t=0, q=None):
-        """Compute the boundary conditions."""
+    def update_BCs(self, t, q_left, q_right):
 
-        #rho_out = self.pressure_to_density(self.p_ref)
+        self.BC_state_1 = {
+            'left': q_left[0],
+            'right': q_right[0]
+        }
+
+        self.BC_state_2 = {
+            'left': q_left[1],
+            'right': q_right[1]
+        }
+
+    def set_external_state(self, q_left=None, q_right=None):
         '''
-        q_left = q[:, 0]
-        q_right = q[:, -1]
-
-        #rho_A_right = self.pressure_to_density(self.p_ref) * self.A
-
-        p_right = self.density_to_pressure(q_right[0]/self.A)
-        u_left = q_left[1]/q_left[0]
-
-        BCs = np.zeros((self.DG_vars.num_states, 2))
-
-        # left rho boundary
-        BCs[0, 0] = 0.
-
-        # right rho boundary
-        BCs[0, 1] = q_right[0] - self.pressure_to_density(self.p_ref) * self.A
-
-        # left u boundary
-        BCs[1, 0] = q_left[1] - q_left[0] * 4.
-
-        # right u boundary
-        BCs[1, 1] = 0.
-
-        u = q[1]/q[0]
-        p = self.density_to_pressure(q[0]/self.A)
-        
-        BC_state_1 = {
-            'left': None,
-            'right': (p-self.p_ref)/self.step_size
-        }
-        BC_state_2 = {
-            'left': (u-4.5)/self.step_size,#4.0 + 0.5,#*np.sin(0.2*t)),
-            'right': None
-        }
-
-        BCs = [BC_state_1, BC_state_2]
+        if q_left is None:
+            self.q_left = np.zeros((self.DG_vars.num_states, 2))
+            self.flux_left = np.zeros((self.DG_vars.num_states, 2))
+        if q_right is None:
+            self.q_right = np.zeros((self.DG_vars.num_states, 2))
+            self.flux_right = np.zeros((self.DG_vars.num_states, 2))
         '''
-        
-        
-        u = q[1]/q[0]
-        p = self.density_to_pressure(q[0]/self.A)
-        
-        BC_state_1 = {
-            'left': None,
-            'right': self.pressure_to_density(self.p_ref) * self.A
-        }
-        
-        BC_state_2 = {
-            'left': q[0, 0]*4.5,#4.0 + 0.5,#*np.sin(0.2*t)),
-            'right': None
-        }
 
-        BCs = [BC_state_1, BC_state_2]
+        if q_left is not None:
+            self.q_left = q_left#np.stack((q_left, q_left), axis=1)
+            self.flux_left = self.flux(np.expand_dims(q_left, axis=1))[:, 0]#np.concatenate((self.flux(np.expand_dims(q_left, axis=1)), np.expand_dims(q_left, axis=1)), axis=1)
+        if q_right is not None:
+            self.q_right = q_right#np.stack((q_right, q_right), axis=1)
+            self.flux_right = self.flux(np.expand_dims(q_right, axis=1))[:, 0]#np.concatenate((self.flux(np.expand_dims(q_right, axis=1)), self.flux(np.expand_dims(q_right, axis=1))), axis=1)
 
-        return BCs
+            
     
     def boundary_conditions(self, t, q=None):
         """Compute the boundary conditions."""
         
-        u = q[1]/q[0]
-        p = self.density_to_pressure(q[0]/self.A)
-
         BC_state_1 = {
-            'left': None,
-            'right': self.pressure_to_density(self.p_ref)#(p-self.p_ref)/self.step_size
+            'left': self.BC_state_1['left'],
+            'right': self.BC_state_1['right']
         }
 
         BC_state_2 = {
-            'left': 50,#q[0, 0]*4.5,#(u-4.5)/self.step_size,#4.0 + 0.5,#*np.sin(0.2*t)),
-            'right': None
+            'left': self.BC_state_2['left'],
+            'right': self.BC_state_2['right']
         }
 
         BCs = [BC_state_1, BC_state_2]
@@ -251,7 +201,7 @@ class PipeflowEquations(BaseModel):
 
         point_source = np.zeros((self.DG_vars.Np*self.DG_vars.K))
         if t>0:
-            x = pipe_DG.DG_vars.x.flatten('F')
+            x = self.DG_vars.x.flatten('F')
             width = 50
             point_source = \
                 (np.heaviside(x-500 + width/2, 1) - np.heaviside(x-500-width/2, 1))
@@ -264,9 +214,357 @@ class PipeflowEquations(BaseModel):
         s[0] *= 0.
         s[1] = -self.friction_factor(q)
 
-        #s = 0*s
-
         return s
+    
+
+class PipeNetwork():
+    def __init__(
+        self,
+        basic_args,
+        numerical_flux_args,
+        stabilizer_args,
+        time_integrator_args,
+        BC_args
+    ):
+        super().__init__()
+
+        self.step_size = time_integrator_args['step_size']
+        self.pipe_DG_1 = PipeflowEquations(
+            basic_args=basic_args,
+            BC_args=BC_args,
+            stabilizer_args=stabilizer_args,
+            time_integrator_args=time_integrator_args,
+            numerical_flux_args=numerical_flux_args,
+        )
+        time_integrator_args['step_size'] = self.step_size
+        self.pipe_DG_2 = PipeflowEquations(
+            basic_args=basic_args,
+            BC_args=BC_args,
+            stabilizer_args=stabilizer_args,
+            time_integrator_args=time_integrator_args,
+            numerical_flux_args=numerical_flux_args,
+        )
+
+
+    def set_BCs(self, q, BCs):
+        '''
+        self.pipe_DG_1.update_BCs(
+            t=0, 
+            q_left=np.array([None, q[0][-1][0, 0]*4.5]),
+            q_right=np.array([q[1][-1][0, 0], None])
+        )
+        self.pipe_DG_2.update_BCs(
+            t=0, 
+            q_left=np.array([None, q[0][-1][1, -1]]),
+            q_right=np.array([self.pipe_DG_2.rho_ref*self.pipe_DG_2.A, None])
+        )
+        self.pipe_DG_1.update_BCs(
+            t=0, 
+            q_left=np.array([None, q[0][-1][0, 0]*4.5]),
+            q_right=np.array([q[1][-1][0, 0], q[1][-1][1, 0]])
+        )
+        self.pipe_DG_2.update_BCs(
+            t=0, 
+            q_left=np.array([q[0][-1][0, -1], q[0][-1][1, -1]]),
+            q_right=np.array([self.pipe_DG_2.rho_ref*self.pipe_DG_2.A, None])
+        )
+        '''
+        self.pipe_DG_1.update_BCs(
+            t=0, 
+            q_left=np.array([None, q[0][-1][0, 0]*4.5]),
+            q_right=np.array([None, None])
+        )
+        self.pipe_DG_2.update_BCs(
+            t=0, 
+            q_left=np.array([None, None]),
+            q_right=np.array([self.pipe_DG_2.rho_ref*self.pipe_DG_2.A, None])
+        )
+
+    def set_external_state(self, q):
+
+        self.pipe_DG_1.set_external_state(
+            q_left=None,
+            q_right=q[1],
+        )
+        self.pipe_DG_2.set_external_state(
+            q_left=q[0],
+            q_right=None,
+        )
+
+    def solve(self, t, t_final):
+
+
+        q_init = self.pipe_DG_1.initial_condition(self.pipe_DG_1.DG_vars.x.flatten('F'))
+        
+        t_final = 5.0
+        t = 0
+
+        sol = {}
+
+        sol[0] = [q_init]
+        sol[1] = [q_init]
+
+        sol1 = np.expand_dims(q_init, axis=2)
+        sol2 = np.expand_dims(q_init, axis=2)
+
+        xxx = []
+        sss = []
+
+        for i in range(0, 500):
+
+            t_next = t + self.step_size
+
+            for j in range(1):
+                P, P_inv, A, S, S_inv, Lambda = self.pipe_DG_1.transform_matrices(t, sol1[:, -1, -1])
+
+                prim_state = np.array(
+                    [
+                    self.pipe_DG_1.density_to_pressure(sol1[0, -self.pipe_DG_1.DG_vars.Np:, -1]/self.pipe_DG_1.A), 
+                    sol1[1, -self.pipe_DG_1.DG_vars.Np:, -1]/sol1[0, -self.pipe_DG_1.DG_vars.Np:, -1]
+                    ]
+                )
+                prim_state *= self.pipe_DG_1.A
+                dpdx = (self.pipe_DG_1.DG_vars.Dr @ prim_state[0])[-1]
+                dudx = (self.pipe_DG_1.DG_vars.Dr @ prim_state[1])[-1]
+
+                prim_state_dx = np.array([dpdx, dudx])
+
+                #Lambda = np.diag(Lambda)
+                for iter, ll in enumerate(np.diag(Lambda)):
+                    if ll > 0:
+                        lambda_plus = ll
+                        i_plus = iter
+                    elif ll < 0:
+                        lambda_minus = ll
+                        i_minus = iter
+                Lambda_minus = Lambda.copy()
+                Lambda_plus = Lambda.copy()
+                Lambda_minus[i_minus, i_minus] = 0
+                Lambda_plus[i_plus, i_plus] = 0
+
+                A_minus = S @ Lambda_minus @ S_inv
+                A_plus = S @ Lambda_plus @ S_inv
+
+                dprim_dt = A_plus @ prim_state_dx
+                dqdt = - P @ dprim_dt - self.pipe_DG_1.source(t, sol1[:, -1, -1])[:, -1]
+
+
+                func = lambda q: q - sol1[:, -1, -1] - self.step_size * dqdt 
+                q1_new = fsolve(func, sol1[:, -1, -1])
+
+
+                P, P_inv, A, S, S_inv, Lambda = self.pipe_DG_2.transform_matrices(t, sol2[:, 0, -1])
+
+                prim_state = np.array(
+                    [
+                    self.pipe_DG_2.density_to_pressure(sol2[0, 0:self.pipe_DG_2.DG_vars.Np, -1]/self.pipe_DG_2.A), 
+                    sol2[1, 0:self.pipe_DG_2.DG_vars.Np, -1]/sol2[0, 0:self.pipe_DG_2.DG_vars.Np, -1]
+                    ]
+                )
+                prim_state *= self.pipe_DG_2.A
+                dpdx = (self.pipe_DG_1.DG_vars.Dr @ prim_state[0])[-1]
+                dudx = (self.pipe_DG_1.DG_vars.Dr @ prim_state[1])[-1]
+
+                prim_state_dx = np.array([dpdx, dudx])
+
+                #Lambda = np.diag(Lambda)
+                for iter, ll in enumerate(np.diag(Lambda)):
+                    if ll > 0:
+                        lambda_plus = ll
+                        i_plus = iter
+                    elif ll < 0:
+                        lambda_minus = ll
+                        i_minus = iter
+                Lambda_minus = Lambda.copy()
+                Lambda_plus = Lambda.copy()
+                Lambda_minus[i_minus, i_minus] = 0
+                Lambda_plus[i_plus, i_plus] = 0
+
+                A_minus = S @ Lambda_minus @ S_inv
+                A_plus = S @ Lambda_plus @ S_inv
+
+                dprim_dt = A_minus @ prim_state_dx
+                dqdt = - P @ dprim_dt - self.pipe_DG_1.source(t, sol2[:, 0, -1])[:, 0]
+
+
+                func = lambda q: q - sol2[:, 0, -1] - self.step_size * dqdt
+                q2_new = fsolve(func, sol2[:, 0, -1])
+                
+                '''
+
+                #L = S_inv @ A @ np.array([dpdx, dudx])
+                L_plus = Lambda @ S_inv[i_plus, :] @ np.array([dpdx, dudx])
+                
+                dqdt = - P @ S[:, i_plus] * L_plus - self.pipe_DG_1.source(t, sol1[:, -1, -1])[:, -1]
+                
+                func = lambda q: q - sol1[:, -1, -1] - self.step_size * dqdt
+                q1_new = fsolve(func, sol1[:, -1, -1])
+                #q1_new = sol1[:, -1, -1] + self.step_size * dqdt
+
+                #if Lambda[0, 0] < 0:
+                #    q1_new[0] = sol1[0, -1, -1]
+                #if Lambda[1, 1] < 0:
+                #    q1_new[1] = sol1[1, -1, -1]
+
+                P, P_inv, A, S, S_inv, Lambda = self.pipe_DG_2.transform_matrices(t, sol2[:, 0, -1])
+
+                prim_state = np.array(
+                    [
+                    self.pipe_DG_2.density_to_pressure(sol2[0, 0:self.pipe_DG_2.DG_vars.Np, -1]/self.pipe_DG_2.A), 
+                    sol2[1, 0:self.pipe_DG_2.DG_vars.Np, -1]/sol2[0, 0:self.pipe_DG_2.DG_vars.Np, -1]
+                    ]
+                )
+                prim_state *= self.pipe_DG_2.A
+                dpdx = (self.pipe_DG_1.DG_vars.Dr @ prim_state[0])[-1]
+                dudx = (self.pipe_DG_1.DG_vars.Dr @ prim_state[1])[-1]
+
+                #Lambda = np.diag(Lambda)
+                for iter, ll in enumerate(np.diag(Lambda)):
+                    if ll > 0:
+                        lambda_plus = ll
+                        i_plus = iter
+                    elif ll < 0:
+                        lambda_minus = ll
+                        i_minus = iter
+                Lambda[i_plus, i_plus]
+                L_minus = Lambda @ S_inv[i_minus, :] @ np.array([dpdx, dudx])
+                
+                dqdt = - P @ S[:, i_minus] * L_minus - self.pipe_DG_1.source(t, sol1[:, -1, -1])[:, -1]
+
+                #L1 = self.pipe_DG_2.DG_vars.Dr @ prim_state[0]
+                #L2 = self.pipe_DG_2.DG_vars.Dr @ prim_state[1]
+                #L = np.array([L1[0], L2[0]])
+                #L = Lambda @ S_inv @ L
+
+                #dqdt = - P @ S @ L - self.pipe_DG_2.source(t, sol2[:, 0, -1])[:, 0]
+                
+                func = lambda q: q - sol2[:, 0, -1] - self.step_size * dqdt
+                q2_new = fsolve(func, sol2[:, 0, -1])
+
+                #q2_new = sol2[:, 0, -1] + self.step_size * dqdt
+
+                #if Lambda[0, 0] > 0:
+                #    q2_new[0] = sol2[0, 0, -1]
+                #if Lambda[1, 1] > 0:
+                #    q2_new[1] = sol2[1, 0, -1]
+                '''
+
+                '''
+                pipe_1_numerical_flux = self.pipe_DG_1.numerical_flux(
+                    q_inside=sol1[:, -1, -1],
+                    q_outside=sol2[:, 0, -1],
+                    flux_inside=self.pipe_DG_1.flux(sol1[:, -1, -1]),
+                    flux_outside=self.pipe_DG_1.flux(sol2[:, 0, -1]),
+                    on_boundary=True
+                )
+                '''
+
+                #q1_new = sol1[:, -1, -1]
+                #q2_new = sol2[:, 0, -1]
+
+                #self.set_BCs(q=sol, BCs=None)
+                self.set_BCs(q=sol, BCs=None)
+
+                #self.set_BCs(q=sol, BCs=None)
+                #self.set_BCs(q=[sol1, sol2], BCs=None)
+                self.set_external_state(q=[q1_new, q2_new])
+
+                sol1, t_vec = self.pipe_DG_1.solve(
+                    t=t, 
+                    q_init=sol[0][-1], 
+                    t_final=t_next, 
+                    print_progress=False,
+                    steady_state_args=None,
+                    external_state={'left': False, 'right': True}
+                )
+                '''
+                pipe_1_numerical_flux = self.pipe_DG_1.numerical_flux(
+                    q_inside=sol1[:, -1:, -1],
+                    q_outside=sol2[:, 0:1, -1],
+                    flux_inside=self.pipe_DG_1.flux(sol1[:, -1:, -1]),
+                    flux_outside=self.pipe_DG_1.flux(sol2[:, 0:1, -1]),
+                    on_interface='right'
+                )
+                '''
+
+                #self.set_BCs(q=sol, BCs=None)
+
+                #self.set_external_state(q=[sol1[:, -1, -1], sol2[:, 0, -1]])
+
+                sol2, t_vec = self.pipe_DG_2.solve(
+                    t=t, 
+                    q_init=sol[1][-1], 
+                    t_final=t_next, 
+                    print_progress=False,
+                    steady_state_args=None,
+                    external_state={'left': True, 'right': False}
+                )
+
+                '''
+                pipe_2_numerical_flux = self.pipe_DG_2.numerical_flux(
+                    q_inside=sol2[:, 0:1, -1],
+                    q_outside=sol1[:, -1:, -1],
+                    flux_inside=self.pipe_DG_2.flux(sol2[:, 0:1, -1]),
+                    flux_outside=self.pipe_DG_2.flux(sol1[:, -1:, -1]),
+                    on_interface='left'
+                )
+                '''
+                #print(pipe_1_numerical_flux-pipe_2_numerical_flux)
+
+                #BC_err = np.abs(np.sum(sol1[:, -1, -1] - sol2[:, 0, -1]))
+                #BC_err = np.linalg.norm(pipe_1_numerical_flux-pipe_2_numerical_flux)
+                #if BC_err < 1e-10:
+                #    break
+                #else:
+                #    if j % 10 == 0:
+                #        print(f'BC error: {BC_err}, iteration: {j}')
+            print(i)
+
+            sol[0].append(sol1[:, :, -1])
+            sol[1].append(sol2[:, :, -1])
+
+            t = t_next
+
+            xx = np.concatenate((self.pipe_DG_1.DG_vars.x.flatten('F'), self.pipe_DG_1.DG_vars.x.flatten('F')[-1]+self.pipe_DG_2.DG_vars.x.flatten('F')))
+            ss = np.concatenate((sol1[1, :, -1]/sol1[0, :, -1], sol2[1, :, -1]/sol2[0, :, -1]))
+
+            xxx.append(xx)
+            sss.append(ss)
+
+        xxx = np.array(xxx)[0]
+        sss = np.array(sss)
+
+        fig, ax = plt.subplots()
+        xdata, ydata = [], []
+        ln, = ax.plot([], [], lw=3, animated=True)
+
+        t_vec = np.arange(0, sss.shape[0])
+
+        def init():
+            ax.set_xlim(0, 4000)
+            ax.set_ylim(sss.min() - .3, sss.max() + .3)
+            return ln,
+
+        def update(frame):
+            xdata.append(xxx)
+            ydata.append(sss[frame, :])
+            ln.set_data(xxx, sss[frame, :])
+            return ln,
+        ani = FuncAnimation(
+            fig,
+            update,
+            frames=t_vec,
+            init_func=init, 
+            blit=True,
+            interval=10,
+            )
+        ani.save('pipeflow.gif', fps=30)
+
+
+        plt.plot(xxx, sss[-1])
+        plt.show()
+
+
 
 if __name__ == '__main__':
     
@@ -277,7 +575,7 @@ if __name__ == '__main__':
         'xmax': 2000,
         'num_elements': 100,
         'num_states': 2,
-        'polynomial_order': 2,
+        'polynomial_order': 3,
         'polynomial_type': 'legendre',
     }
 
@@ -290,14 +588,8 @@ if __name__ == '__main__':
     }
 
     numerical_flux_args = {
-        'type': 'roe',
-        #'alpha': 0.0,
-    }
-    
-    '''
-    stabilizer_args = {
-        'type': 'slope_limiter',
-        'second_derivative_upper_bound': 1e-8,
+        'type': 'lax_friedrichs',
+        'alpha': 0.5,
     }
     '''
     stabilizer_args = {
@@ -305,12 +597,17 @@ if __name__ == '__main__':
         'num_modes_to_filter': 20,
         'filter_order': 6,
     }
+    '''
+    stabilizer_args = {
+        'type': 'slope_limiter',
+        'second_derivative_upper_bound': 1e-8,
+    }
 
     time_integrator_args = {
         'type': 'implicit_euler',
         'step_size': 0.05,
         'newton_params':{
-            'solver': 'direct',
+            'solver': 'krylov',
             'max_newton_iter': 200,
             'newton_tol': 1e-5
             }
@@ -322,44 +619,35 @@ if __name__ == '__main__':
         'form': {'left': 'primitive', 'right': 'primitive'},
     }
 
-    error = []
-    conv_list = [2]
-    num_DOFs = []
-    for polynomial_order in conv_list:
 
-        #polynomial_order=8
-        num_elements = 50
+    #polynomial_order=8
+    num_elements = 150
+    polynomial_order = 2
 
-        num_DOFs.append((polynomial_order+1)*num_elements)
-
-        pipe_DG = PipeflowEquations(
-            basic_args=basic_args,
-            BC_args=BC_args,
-            stabilizer_args=stabilizer_args,
-            time_integrator_args=time_integrator_args,
-            numerical_flux_args=numerical_flux_args,
-        )
+    pipe_DG = PipeNetwork(
+        basic_args=basic_args,
+        BC_args=BC_args,
+        stabilizer_args=stabilizer_args,
+        time_integrator_args=time_integrator_args,
+        numerical_flux_args=numerical_flux_args,
+    )
 
 
-        init = pipe_DG.initial_condition(pipe_DG.DG_vars.x.flatten('F'))
+    t_final = 5.0
+    sol, t_vec = pipe_DG.solve(
+        t=0, 
+        t_final=t_final, 
+    )
 
-        t_final = 5.0
-        sol, t_vec = pipe_DG.solve(
-            t=0, 
-            q_init=init, 
-            t_final=t_final, 
-            steady_state_args=None#steady_state
-        )
+    x = np.linspace(0, 2000, 2000)
 
-        x = np.linspace(0, 2000, 2000)
-
-        u = np.zeros((len(x), len(t_vec)))
-        rho = np.zeros((len(x), len(t_vec)))
-        for t in range(sol.shape[-1]):
-            rho[:, t] = pipe_DG.evaluate_solution(x, sol_nodal=sol[0, :, t])
-            u[:, t] = pipe_DG.evaluate_solution(x, sol_nodal=sol[1, :, t])
-        rho = rho / pipe_DG.A
-        u = u / rho / pipe_DG.A
+    u = np.zeros((len(x), len(t_vec)))
+    rho = np.zeros((len(x), len(t_vec)))
+    for t in range(sol.shape[-1]):
+        rho[:, t] = pipe_DG.evaluate_solution(x, sol_nodal=sol[0, :, t])
+        u[:, t] = pipe_DG.evaluate_solution(x, sol_nodal=sol[1, :, t])
+    rho = rho / pipe_DG.A
+    u = u / rho / pipe_DG.A
 
     print(rho[0, :])
     

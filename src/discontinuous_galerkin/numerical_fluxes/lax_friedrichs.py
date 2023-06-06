@@ -34,8 +34,17 @@ class LaxFriedrichsFlux(BaseNumericalFlux):
     
     def _boundary_jump_operator(self, q_inside, q_outside):
         """Compute the jump operator on the boundary."""
-
+        
         return self.nx_boundary * (q_inside - q_outside)
+    
+    def _interface_jump_operator(self, q_inside, q_outside, side='left'):
+        """Compute the jump operator on the boundary."""
+
+        if side == 'left':
+            return -1 *(q_inside - q_outside)
+        elif side == 'right':
+            return 1 * (q_inside - q_outside)
+
 
     def compute_numerical_flux(
         self, 
@@ -43,7 +52,8 @@ class LaxFriedrichsFlux(BaseNumericalFlux):
         q_outside, 
         flux_inside, 
         flux_outside,
-        on_boundary=False
+        on_boundary=False,
+        on_interface=None,
         ):
         """Compute the numerical flux."""
 
@@ -53,6 +63,8 @@ class LaxFriedrichsFlux(BaseNumericalFlux):
         # Compute the jump of the states
         if on_boundary:
             q_jump = self._boundary_jump_operator(q_inside, q_outside)
+        elif on_interface is not None:
+            q_jump = self._interface_jump_operator(q_inside, q_outside, side=on_interface)
         else:
             q_jump = self._jump_operator(q_inside, q_outside)
 

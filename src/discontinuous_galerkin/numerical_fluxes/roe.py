@@ -158,7 +158,8 @@ class RoeFlux(BaseNumericalFlux):
         flux_inside, 
         flux_outside,
         on_boundary=False,
-        t = None
+        t = None,
+        on_interface=None,
         ):
         """Compute the numerical flux."""
 
@@ -178,7 +179,6 @@ class RoeFlux(BaseNumericalFlux):
             q_BC = fsolve(left_BC_equations, q_inside[:, 0])
 
 
-            q_BC = self.primitive_to_conservative(q_BC)
             q_BC = np.stack(q_BC, axis=0)
 
 
@@ -226,10 +226,8 @@ class RoeFlux(BaseNumericalFlux):
             # Compute the eigenvalues of the system
             D, L, R = self._get_eigen(q_roe_average)
 
-            q_inside = self.primitive_to_conservative(q_inside)
             q_inside = np.stack(q_inside, axis=0)
 
-            q_outside = self.primitive_to_conservative(q_outside)
             q_outside = np.stack(q_outside, axis=0)
 
             q_diff = (q_outside - q_inside)/2
@@ -255,10 +253,8 @@ class RoeFlux(BaseNumericalFlux):
             # Compute the eigenvalues of the system
             D, L, R = self._get_eigen(q_roe_average)
 
-            q_inside = self.primitive_to_conservative(q_inside)
             q_inside = np.stack(q_inside, axis=0)
 
-            q_outside = self.primitive_to_conservative(q_outside)
             q_outside = np.stack(q_outside, axis=0)
 
             q_diff = (q_outside - q_inside)/2
