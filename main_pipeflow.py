@@ -211,7 +211,7 @@ class PipeflowEquations(BaseModel):
         p = self.density_to_pressure(rho)
 
         s[0] = - self.Cd * np.sqrt(rho * (p - self.p_amb)) * point_source
-        s[0] *= 0.
+        #s[0] *= 0.
         s[1] = -self.friction_factor(q)
 
         return s
@@ -247,31 +247,10 @@ class PipeNetwork():
 
 
     def set_BCs(self, q, BCs):
-        '''
+
         self.pipe_DG_1.update_BCs(
             t=0, 
-            q_left=np.array([None, q[0][-1][0, 0]*4.5]),
-            q_right=np.array([q[1][-1][0, 0], None])
-        )
-        self.pipe_DG_2.update_BCs(
-            t=0, 
-            q_left=np.array([None, q[0][-1][1, -1]]),
-            q_right=np.array([self.pipe_DG_2.rho_ref*self.pipe_DG_2.A, None])
-        )
-        self.pipe_DG_1.update_BCs(
-            t=0, 
-            q_left=np.array([None, q[0][-1][0, 0]*4.5]),
-            q_right=np.array([q[1][-1][0, 0], q[1][-1][1, 0]])
-        )
-        self.pipe_DG_2.update_BCs(
-            t=0, 
-            q_left=np.array([q[0][-1][0, -1], q[0][-1][1, -1]]),
-            q_right=np.array([self.pipe_DG_2.rho_ref*self.pipe_DG_2.A, None])
-        )
-        '''
-        self.pipe_DG_1.update_BCs(
-            t=0, 
-            q_left=np.array([None, q[0][-1][0, 0]*4.5]),
+            q_left=np.array([None, q[0][-1][0, 0]*4]),
             q_right=np.array([None, None])
         )
         self.pipe_DG_2.update_BCs(
@@ -310,7 +289,7 @@ class PipeNetwork():
         xxx = []
         sss = []
 
-        for i in range(0, 500):
+        for i in range(0, 200):
 
             t_next = t + self.step_size
 
@@ -362,8 +341,8 @@ class PipeNetwork():
                     ]
                 )
                 prim_state *= self.pipe_DG_2.A
-                dpdx = (self.pipe_DG_1.DG_vars.Dr @ prim_state[0])[-1]
-                dudx = (self.pipe_DG_1.DG_vars.Dr @ prim_state[1])[-1]
+                dpdx = (self.pipe_DG_1.DG_vars.Dr @ prim_state[0])[0]
+                dudx = (self.pipe_DG_1.DG_vars.Dr @ prim_state[1])[0]
 
                 prim_state_dx = np.array([dpdx, dudx])
 
@@ -477,7 +456,6 @@ class PipeNetwork():
                     steady_state_args=None,
                     external_state={'left': False, 'right': True}
                 )
-                '''
                 pipe_1_numerical_flux = self.pipe_DG_1.numerical_flux(
                     q_inside=sol1[:, -1:, -1],
                     q_outside=sol2[:, 0:1, -1],
@@ -485,7 +463,6 @@ class PipeNetwork():
                     flux_outside=self.pipe_DG_1.flux(sol2[:, 0:1, -1]),
                     on_interface='right'
                 )
-                '''
 
                 #self.set_BCs(q=sol, BCs=None)
 
@@ -500,7 +477,6 @@ class PipeNetwork():
                     external_state={'left': True, 'right': False}
                 )
 
-                '''
                 pipe_2_numerical_flux = self.pipe_DG_2.numerical_flux(
                     q_inside=sol2[:, 0:1, -1],
                     q_outside=sol1[:, -1:, -1],
@@ -508,11 +484,11 @@ class PipeNetwork():
                     flux_outside=self.pipe_DG_2.flux(sol1[:, -1:, -1]),
                     on_interface='left'
                 )
-                '''
                 #print(pipe_1_numerical_flux-pipe_2_numerical_flux)
 
                 #BC_err = np.abs(np.sum(sol1[:, -1, -1] - sol2[:, 0, -1]))
-                #BC_err = np.linalg.norm(pipe_1_numerical_flux-pipe_2_numerical_flux)
+                BC_err = np.linalg.norm(pipe_1_numerical_flux-pipe_2_numerical_flux)
+                print(f'BC error: {BC_err}, iteration: {j}')
                 #if BC_err < 1e-10:
                 #    break
                 #else:
@@ -573,7 +549,7 @@ if __name__ == '__main__':
     basic_args = {
         'xmin': 0,
         'xmax': 2000,
-        'num_elements': 100,
+        'num_elements': 200,
         'num_states': 2,
         'polynomial_order': 3,
         'polynomial_type': 'legendre',
@@ -605,7 +581,7 @@ if __name__ == '__main__':
 
     time_integrator_args = {
         'type': 'implicit_euler',
-        'step_size': 0.05,
+        'step_size': 0.1,
         'newton_params':{
             'solver': 'krylov',
             'max_newton_iter': 200,
