@@ -9,11 +9,7 @@ license = {file = "LICENSE.txt"}
 description = "A generic discontinuous galerkin package"
 readme = "README.md"
 requires-python = ">=3.8"
-dependencies = [
-    "matplotlib ~= 3.6.2",
-    "numpy ~= 1.23.5",
-    "scipy"
-]
+dependencies = []
 
 [project.urls]
 "Homepage" = "https://github.com/nmucke/discontinuous-galerkin"
