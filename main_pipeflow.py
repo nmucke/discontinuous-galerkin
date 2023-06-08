@@ -138,15 +138,7 @@ class PipeflowEquations(BaseModel):
         }
 
     def set_external_state(self, q_left=None, q_right=None):
-        '''
-        if q_left is None:
-            self.q_left = np.zeros((self.DG_vars.num_states, 2))
-            self.flux_left = np.zeros((self.DG_vars.num_states, 2))
-        if q_right is None:
-            self.q_right = np.zeros((self.DG_vars.num_states, 2))
-            self.flux_right = np.zeros((self.DG_vars.num_states, 2))
-        '''
-
+        
         if q_left is not None:
             self.q_left = q_left#np.stack((q_left, q_left), axis=1)
             self.flux_left = self.flux(np.expand_dims(q_left, axis=1))[:, 0]#np.concatenate((self.flux(np.expand_dims(q_left, axis=1)), np.expand_dims(q_left, axis=1)), axis=1)

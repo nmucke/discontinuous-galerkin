@@ -1,0 +1,31 @@
+
+
+pipe_DG_args:
+  basic_args:
+    xmin: 0
+    xmax: 2000
+    num_elements: 200
+    num_states: 2
+    polynomial_order: 3
+    polynomial_type: 'legendre'
+      
+  numerical_flux_args:
+    type: 'lax_friedrichs'
+    alpha: 0.5
+
+  stabilizer_args:
+    type: 'slope_limiter'
+    second_derivative_upper_bound: 1,0e-8
+
+  time_integrator_args:
+    type: 'implicit_euler'
+    step_size: 0.05
+    newton_params:
+      solver: 'krylov'
+      max_newton_iter: 200
+      newton_tol: 1.0e-5
+    
+  BC_args:
+    type: 'dirichlet'
+    treatment: 'naive'
+    form: {'left': 'primitive', 'right': 'primitive'}
