@@ -105,7 +105,8 @@ def get_numerical_flux(
     DG_vars, 
     numerical_flux_args: dict=None,
     system_jacobian=None,
-    eigen=None
+    eigen=None,
+    velocity=None,
     ):
     """Get instance of numerical flux."""
 
@@ -138,6 +139,7 @@ def get_numerical_flux(
     else:
         numerical_flux = factory[numerical_flux_type](
             DG_vars, 
+            velocity=velocity,
             **numerical_flux_args
             )
 

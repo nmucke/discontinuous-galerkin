@@ -58,7 +58,10 @@ class PipeflowEquations(BaseModel):
 
         p = self.density_to_pressure(rho_g)
 
-        rho_m = rho_g * A_g + self.rho_l * A_l
+        alpha_l = A_l/self.A
+        alpha_g = A_g/self.A
+
+        rho_m = rho_g * alpha_g + self.rho_l * alpha_l
 
         u_m = q[2]/rho_m
 
@@ -75,18 +78,21 @@ class PipeflowEquations(BaseModel):
 
         A_g = self.A - A_l
 
-        rho_m = rho_g * A_g + self.rho_l * A_l
+        alpha_l = A_l/self.A
+        alpha_g = A_g/self.A
+
+        rho_m = rho_g * alpha_g + self.rho_l * alpha_l
 
         rho_g_A_g = rho_g * A_g
         rho_l_A_l = self.rho_l * A_l
-        rho_m_u_m = rho_m * u_m
+        rho_m_u_m_A = rho_m * u_m * self.A
 
-        return rho_g_A_g, rho_l_A_l, rho_m_u_m
+        return rho_g_A_g, rho_l_A_l, rho_m_u_m_A
     
 
     def eigen(self, q):
         """Compute the eigenvalues and eigenvectors of the flux Jacobian."""
-
+        
         if self.conservative_or_primitive == 'conservative':
             rho_g_A_g = q[0]
             rho_l_A_l = q[1]
@@ -124,7 +130,6 @@ class PipeflowEquations(BaseModel):
         R[2, :] = np.array(
             [1., 1., 0.]
             ) 
-
 
         L[0, :] = np.array(
             [0, -np.sqrt(A_g * c_g_squared) / (2 * np.sqrt(p) * term_1), 0.5]
@@ -241,11 +246,14 @@ class PipeflowEquations(BaseModel):
 
         A_g = self.A - A_l
 
+        alpha_l = A_l/self.A
+        alpha_g = A_g/self.A
+
         rho_g = self.pressure_to_density(p)
 
-        rho_m = rho_g * A_g + self.rho_l * A_l
-
-        mu_m = (self.mu_g * A_g + self.mu_l * A_l) / self.A
+        #rho_m = rho_g * A_g + self.rho_l * A_l
+        rho_m = rho_g * alpha_g + self.rho_l * alpha_l
+        mu_m = self.mu_g * alpha_g + self.mu_l * alpha_l
 
         Re = rho_m * np.abs(u_m) * self.d / mu_m
 
@@ -254,11 +262,7 @@ class PipeflowEquations(BaseModel):
         
         f_w = 8 * ((8/Re)**12 + (a + b)**(-1.5))**(1/12)
 
-        T_w = f_w * rho_m * u_m * np.abs(u_m) / (2 * self.d)
-
-        T_w = T_w * self.A 
-
-        #T_w = self.A/self.d/2 * f_w * rho_m * u_m * np.abs(u_m)
+        T_w = f_w * rho_m * u_m * np.abs(u_m) / (2 * self.d) * self.A
 
         return T_w
 
@@ -318,15 +322,24 @@ class PipeflowEquations(BaseModel):
 
         return np.array([gas_mass_flux-a, liquid_mass_flux-b, 0.])
 
-    def bc_func1(self, q, sol):
+    def bc_func1(self, q):
 
         A_l = q[0]
         p = q[1]
         u_m = q[2]
 
-        D, L, R = self.eigen(q)
+        q_star = fsolve(
+            func=lambda q: self.bc_func(q, 0.2, 20.), 
+            x0=q
+            )
 
-        out = np.dot(L, sol-q)
+        D, L, R = self.eigen(q)
+        R_inv = np.linalg.inv(R)
+
+        R_inv_plus = R_inv[:, :]
+        R_inv_plus = R_inv[0, :]
+
+        out = np.dot(R_inv_plus, q_star)
 
         return out
 
@@ -339,10 +352,9 @@ class PipeflowEquations(BaseModel):
         A_g = self.A - A_l
 
         
-        t_start = 50
-        t_end = 60
+        t_start = 100
+        t_end = 110
 
-        '''
         # a increases linearly from 0.2 to 0.4 over 10 seconds
         if t < t_end and t > t_start:
             t_ = t - t_start
@@ -353,73 +365,27 @@ class PipeflowEquations(BaseModel):
             a = 0.2
         if t > 0:
             a = 0.2 
-        '''
 
-        a = 0.2 + 0.1*np.sin(t/100)
+        a = 0.2# + 0.1*np.sin(t/100)
         b = 20.
 
-        #a = 0.2
-        #b = 20.
-        
-        #a = 0.2
-        #b = 20. #+ 1 * np.sin(t/200)
-        
-        #D, L, R = self.eigen(q)
 
         sol = fsolve(
             func=lambda q: self.bc_func(q, a, b), 
             x0=q
             )
-        
-        #sol = fsolve(
-        #    func=lambda q: self.bc_func1(q, sol), 
-        #    x0=q
-        #    )
-        
-        rho_g = self.pressure_to_density(p)
-        
-        alpha_l = b/self.rho_l / (a/rho_g + b/self.rho_l)
-    
-        #print(alpha_l)
-        
-        u_m_BC = b /(self.rho_l * self.A * alpha_l)
-
-        A_l_BC = alpha_l * self.A
 
         return sol[0], sol[1], sol[2] #A_l_BC, p, u_m_BC
 
-    def _get_primitive_BCs_right(self, q):
-
-        A_l = q[0]
-        p = q[1]
-        u_m = q[2]
-
-        A_g = self.A - A_l
-
-        rho_g = self.pressure_to_density(p)
-
-        rho_m = rho_g * A_g + self.rho_l * A_l
-
-        p_BC = self.p_outlet
-
-        return A_l, p_BC, u_m
     
-    def steady_state_boundary_conditions(self, t=0, q=None):
+    def boundary_conditions(self, t=0, q=None):
         """Compute the boundary conditions."""
 
-        A_l_left, p_left, u_m_left = self._get_primitive_BCs_left(q[:,0], t=t)
+        #A_l_left, p_left, u_m_left = self._get_primitive_BCs_left(q[:,0], t=t)
 
-        #self.conservative_or_primitive(q[:,0])
-        #A_l_right, p_right, u_m_right = self._get_primitive_BCs_right(q[:,-1])
 
-        #x_sol = fsolve(self.bc_eqs_left, q[:,0], args=(t,))
-        #A_l_left = x_sol[0]
-        #p = x_sol[1]
-        #u_m_left = x_sol[2]
-
-        #rho_out = self.pressure_to_density(self.p_ref)
         BC_state_1 = {
-            'left': A_l_left,
+            'left': None,
             'right': None,
         }
         BC_state_2 = {
@@ -427,140 +393,48 @@ class PipeflowEquations(BaseModel):
             'right': self.p_outlet,
         }
         BC_state_3 = {
-            'left': u_m_left,
+            'left': None,
             'right': None
         }
 
-        BCs = [BC_state_1, BC_state_2, BC_state_3]
+        BCs_state = [BC_state_1, BC_state_2, BC_state_3]
 
-        return BCs
-    
-    def bc_eqs_left(self, x, t):
-
-
-        t_start = 5000
-        t_end = 5010
-        
-        '''
-        # a increases linearly from 0.2 to 0.4 over 10 seconds
-        if t < t_end and t > t_start:
-            t_ = t - t_start
-            a = 0.2 + 0.2 * t_ / 10
-        elif t > t_end:
-            a = 0.4 + 0.1*np.sin(t/200)
-        else:
-            a = 0.2
-        '''
-        if t > 0:
-            a = 0.2 + 0.1*np.sin(t/200)
-        b = 20.
-
-
-        A_l = x[0]
-        p = x[1]
-        u_m = x[2]
-
-
-        A_g = self.A - A_l
-
-        rho_g = self.pressure_to_density(p)
-
-        bc_rhs = np.zeros(3)
-
-        bc_rhs[0] = A_l * u_m * self.rho_l - b 
-        bc_rhs[1] = A_g * u_m * rho_g - a
-
-        return bc_rhs
-    
-    def boundary_conditions(self, t, q=None):
-        """Compute the boundary conditions.
-
-        Boundary conditions left side:
-        u_m * rho_g * A_g = a
-        u_m * rho_l * A_l = b
-
-        Conservative: 
-        q[0] = rho_g * A_g
-        q[1] = rho_l * A_l
-        q[2] = rho_m * u_m * A
-
-        Primitive:
-        q[0] = A_l
-        q[1] = p
-        q[2] = u_m        
-        """
-    
-        #print(alpha_l)
-
-
-        A_l = q[0]
-        p = q[1]
-        u_m = q[2]
-
-        A_g = self.A - A_l
-
-        rho_g = self.pressure_to_density(p)
-        
-        t_start = 20
-        t_end = 30
+        t_start = 100
+        t_end = 110
 
         # a increases linearly from 0.2 to 0.4 over 10 seconds
         if t < t_end and t > t_start:
             t_ = t - t_start
-            a = 0.2 + 0.2 * t_ / 10
+            gas_mass_inflow = 0.2 + 0.02 * t_ / 10
         elif t > t_end:
-            a = 0.4 #+ 0.1*np.sin(t/200)
+            gas_mass_inflow = 0.4 #+ 0.1*np.sin(t/200)
         else:
-            a = 0.2
+            gas_mass_inflow = 0.2
 
-        b = 20.
+        liquid_mass_inflow = 20.
 
-        #rho_g = p * (self.rho_g_norm * self.T_norm) / (self.p_norm * self.T_norm)
-        alpha_l = b/self.rho_l / (a/rho_g + b/self.rho_l)
-        
-        u_m_bc = b /(self.rho_l * self.A * alpha_l)
+        BC_flux_1 = {
+            'left': gas_mass_inflow,
+            'right': None,
+        }
+        BC_flux_2 = {
+            'left': liquid_mass_inflow,
+            'right': None,
+        }
+        BC_flux_3 = {
+            'left': None,
+            'right': None
+        }
 
-        A_l_BC = alpha_l * self.A
-        
-        #rho_out = self.pressure_to_density(self.p_ref)
-        
-        #x_sol = fsolve(self.bc_eqs_left, q, args=(t,))
-        #A_l_BC = x_sol[0]
-        #p = x_sol[1]
-        #u_m_bc = x_sol[2]
+        BCs_flux = [BC_flux_1, BC_flux_2, BC_flux_3]
 
-        A_g = self.A - A_l_BC
-        #print(f'Time: {t:0.2f}, BC: {A_gg*rho_g*u_m_bc:0.3f}, a: {a}')
-        if True:#self.steady_state_solve:
-            BC_state_1 = {
-                'left': A_l_BC,#(A_l - A_l_BC),#,#
-                'right': None,
-            }
-            BC_state_2 = {
-                'left': None,
-                'right': self.p_outlet,#(p-self.p_outlet)#self.p_outlet,#
-            }
-            BC_state_3 = {
-                'left': u_m_bc,#(u_m - u_m_bc),#u_m_bc,#
-                'right': None
-            }
-        elif False:
-            BC_state_1 = {
-                'left': (A_l - A_l_BC)/self.step_size,#A_l_BC,#
-                'right': None,
-            }
-            BC_state_2 = {
-                'left': None,
-                'right': (p-self.p_outlet)/self.step_size#self.p_outlet,#
-            }
-            BC_state_3 = {
-                'left': (u_m - u_m_bc)/self.step_size,#u_m_bc,#
-                'right': None
-            }
+        BCs = {
+            'state': BCs_state,
+            'flux': BCs_flux,
+        }
 
-        BCs = [BC_state_1, BC_state_2, BC_state_3]
-        
         return BCs
+
     
     def velocity(self, q):
         """Compute the wave speed."""
@@ -572,8 +446,6 @@ class PipeflowEquations(BaseModel):
         A_g = self.A - A_l
 
         rho_g = self.pressure_to_density(p)
-
-        rho_m = rho_g * A_g + self.rho_l * A_l
 
         c_g_squared = rho_g * self.T_norm / self.rho_g_norm / self.T_norm
         term_1 = A_g**(3/2) * p * u_m
@@ -600,12 +472,14 @@ class PipeflowEquations(BaseModel):
 
         rho_g = self.pressure_to_density(p)
 
-        rho_m = rho_g * A_g + self.rho_l * A_l
+        alpha_l = A_l/self.A
+        alpha_g = A_g/self.A
+
+        rho_m = rho_g * alpha_g + self.rho_l * alpha_l
 
         flux[0] = rho_g * A_g * u_m
         flux[1] = self.rho_l * A_l * u_m
         
-        p = self.density_to_pressure(rho_g)
         flux[2] = rho_m * u_m**2 * self.A + p * self.A
         
         return flux
@@ -640,9 +514,9 @@ if __name__ == '__main__':
     basic_args = {
         'xmin': 0,
         'xmax': 10000,
-        'num_elements': 100,
+        'num_elements': 25,
         'num_states': 3,
-        'polynomial_order': 2,
+        'polynomial_order': 6,
         'polynomial_type': 'legendre',
     }
 
@@ -659,10 +533,13 @@ if __name__ == '__main__':
     #    'alpha': 0.5,
     #}
     numerical_flux_args = {
-        'type': 'roe',
+        'type': 'lax_friedrichs',
+        'alpha': .5,
     }
+        #T_w = T_w
     
     
+    '''
     stabilizer_args = {
         'type': 'slope_limiter',
         'second_derivative_upper_bound': 1e-8,
@@ -673,7 +550,6 @@ if __name__ == '__main__':
         'num_modes_to_filter': 20,
         'filter_order': 6,
     }
-    '''
     time_integrator_args = {
         'type': 'implicit_euler',
         'step_size': 10,
@@ -727,14 +603,16 @@ if __name__ == '__main__':
     
     u = u_m
     alpha_l = A_l/pipe_DG.A#rho_l_A_l/pipe_DG.A/pipe_DG.rho_l
+    #alpha_l = u_m
+
     
     rho_g = pipe_DG.pressure_to_density(p)
     rho_g_A_g_u_m = u_m * rho_g * (pipe_DG.A - A_l)
     rho_l_A_l_u_m = u_m * pipe_DG.rho_l * A_l
-    print(rho_g_A_g_u_m[:, 0])
+    print(rho_g_A_g_u_m[0, :])
     #alpha_l = p
     #pdb.set_trace()
-    print(alpha_l[0, -1])
+    #print(alpha_l[0, -1])
 
     #alpha_l = p
     
