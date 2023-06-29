@@ -2,6 +2,7 @@ from discontinuous_galerkin.numerical_fluxes.lax_friedrichs import LaxFriedrichs
 from discontinuous_galerkin.numerical_fluxes.roe import RoeFlux
 from discontinuous_galerkin.stabilizers.slope_limiters import GeneralizedSlopeLimiter
 from discontinuous_galerkin.stabilizers.filters import ExponentialFilter
+from discontinuous_galerkin.time_integrators.BDF2 import BDF2
 from discontinuous_galerkin.time_integrators.implicit_euler import ImplicitEuler
 from discontinuous_galerkin.time_integrators.SSPRK import SSPRK
 from discontinuous_galerkin.boundary_conditions.dirichlet_boundary_conditions import DirichletBoundaryConditions 
@@ -10,80 +11,105 @@ import pdb
 
 def get_boundary_conditions(
     DG_vars, 
-    BC_params, 
-    numerical_BC_flux,
+    BC_args, 
+    numerical_flux,
     boundary_conditions, 
     flux, 
+    system_jacobian=None,
+    source=None,
+    transform_matrices=None,
+    primitive_to_conservative=None,
+    conservative_to_primitive=None,
     eigen=None,
-    source=None
     ):
     """Get the boundary conditions."""
-    if BC_params['treatment'] == 'naive':
+    
+    if BC_args['treatment'] == 'naive':
         factory = {
             'dirichlet': DirichletBoundaryConditions,
         }
-        BCs = factory[BC_params['type']](
+        BCs = factory[BC_args['type']](
             DG_vars=DG_vars, 
             boundary_conditions=boundary_conditions, 
             flux=flux,
-            numerical_flux=numerical_BC_flux
+            numerical_flux=numerical_flux,
+            eigen=eigen,
+            **BC_args
             )
-    elif BC_params['treatment'] == 'characteristic':
+    elif BC_args['treatment'] == 'characteristic':
         factory = {
             'dirichlet': CharacteristicDirichletBoundaryConditions,
         }
-        BCs = factory[BC_params['type']](
+        BCs = factory[BC_args['type']](
             DG_vars=DG_vars, 
             boundary_conditions=boundary_conditions, 
             flux=flux,
-            numerical_flux=numerical_BC_flux,
-            eigen=eigen,
-            source=source
+            numerical_flux=numerical_flux,
+            system_jacobian=system_jacobian,
+            source=source,
+            transform_matrices=transform_matrices,
+            primitive_to_conservative=primitive_to_conservative,
+            conservative_to_primitive=conservative_to_primitive,
+            **BC_args
             )
     
-
     return BCs
 
 def get_time_integrator(
     DG_vars, 
-    time_integrator_type, 
-    time_integrator_params: dict=None
+    time_integrator_args: dict=None,
+    stabilizer=None,
+    primitive_to_conservative=None,
+    conservative_to_primitive=None,
     ):
     """Get instance of time integrator."""
 
-    if time_integrator_params is None:
-        time_integrator_params = {}
+    if time_integrator_args is None:
+        time_integrator_args = {}
 
     factory = {
         'implicit_euler': ImplicitEuler,
         'SSPRK': SSPRK,
+        'BDF2': BDF2,
     }
 
-    time_integrator = factory[time_integrator_type](DG_vars, **time_integrator_params)
+    time_integrator_type = time_integrator_args['type']
+    time_integrator_args = \
+        {key: time_integrator_args[key] for key in time_integrator_args if key != 'type'}
+    
+    time_integrator_args['stabilizer'] = stabilizer
 
+    time_integrator = factory[time_integrator_type](
+        DG_vars, 
+        primitive_to_conservative=primitive_to_conservative, 
+        conservative_to_primitive=conservative_to_primitive,
+        **time_integrator_args)
 
     return time_integrator
 
 
 def get_stabilizer(
     DG_vars, 
-    stabilizer_type, 
-    stabilizer_params: dict=None
+    stabilizer_args: dict=None
     ):
     """Get instance of stabilizer."""
 
-    if stabilizer_params is None:
-        stabilizer_params = {}
+    if stabilizer_args is None:
+        stabilizer_args = {}
 
     factory = {
         'slope_limiter': GeneralizedSlopeLimiter,
         'filter': ExponentialFilter,
     }
 
-    if stabilizer_type is None:
+    if stabilizer_args['type'] is None:
         stabilizer = lambda x: x
     else:
-        stabilizer = factory[stabilizer_type](DG_vars, **stabilizer_params)
+        stabilizer_type = stabilizer_args['type']
+        stabilizer_args = \
+            {key: stabilizer_args[key] for key in stabilizer_args if key != 'type'}
+        
+        stabilizer = factory[stabilizer_type](DG_vars, **stabilizer_args)
 
     return stabilizer
 
@@ -91,19 +117,62 @@ def get_stabilizer(
 
 def get_numerical_flux(
     DG_vars, 
-    numerical_flux_type, 
-    numerical_flux_params: dict=None
+    numerical_flux_args: dict=None,
+    system_jacobian=None,
+    eigen=None,
+    velocity=None,
+    primitive_to_conservative=None,
+    conservative_to_primitive=None,
     ):
     """Get instance of numerical flux."""
 
-    if numerical_flux_params is None:
-        numerical_flux_params = {}
+    if numerical_flux_args is None:
+        numerical_flux_args = {}
 
     factory = {
         'lax_friedrichs': LaxFriedrichsFlux,
         'roe': RoeFlux,
     }
-    numerical_flux = factory[numerical_flux_type](DG_vars, **numerical_flux_params)
+
+    numerical_flux_type = numerical_flux_args['type']
+
+    if numerical_flux_type == 'roe':
+        check_if_everything_is_implemented_for_roe_flux(
+            system_jacobian=system_jacobian,
+            eigen=eigen
+        )
+
+    numerical_flux_args = \
+        {key: numerical_flux_args[key] for key in numerical_flux_args if key != 'type'}
     
+    if numerical_flux_type == 'roe':
+        numerical_flux = factory[numerical_flux_type](
+            DG_vars, 
+            system_jacobian=system_jacobian,
+            eigen=eigen,
+            primitive_to_conservative=primitive_to_conservative,
+            conservative_to_primitive=conservative_to_primitive,
+            **numerical_flux_args
+            )
+    else:
+        numerical_flux = factory[numerical_flux_type](
+            DG_vars, 
+            velocity=velocity,
+            **numerical_flux_args
+            )
+
     return numerical_flux
+
+def check_if_everything_is_implemented_for_roe_flux(
+    system_jacobian,
+    eigen    
+):
+    if system_jacobian is None and eigen is None:
+        error_string = "The eigenvalues and eigenvectors must be implemented for the Roe flux. "
+        error_string += "Please implement the eigen() or system_jacobian() methods."
+
+        raise NotImplementedError(
+            error_string
+        )
+
 

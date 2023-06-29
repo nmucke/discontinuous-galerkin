@@ -9,7 +9,7 @@ from discontinuous_galerkin.nonlinear_solvers.newton import NewtonSolver
 from discontinuous_galerkin.base.base_time_integrator import BaseTimeIntegrator
 
 
-class ImplicitEuler(BaseTimeIntegrator):
+class BDF2(BaseTimeIntegrator):
     """Implicit Euler time integrator."""
 
     def __init__(
@@ -31,12 +31,9 @@ class ImplicitEuler(BaseTimeIntegrator):
 
         self.newton_solver = NewtonSolver(**newton_params)
 
-        #if primitive_to_conservative is not None:
-        #    self.primitive_to_conservative = lambda q: np.array(primitive_to_conservative(q))
-        #else:
-        self.primitive_to_conservative = primitive_to_conservative
+        self.primitive_to_conservative = lambda q: np.array(primitive_to_conservative(q))
 
-    def _implicit_euler_rhs(self, q, t_new, q_old, rhs, step_size):
+    def _BDF2_rhs(self, q, t_new, q_old_1, q_old_2, rhs, step_size):
         """Compute the RHS of the implicit Euler equation."""
         
         q = np.reshape(
@@ -44,50 +41,58 @@ class ImplicitEuler(BaseTimeIntegrator):
             (self.DG_vars.num_states, self.DG_vars.Np*self.DG_vars.K),
             order='F'
             )
-        q_old = np.reshape(
-            q_old,
+        q_old_1 = np.reshape(
+            q_old_1,
+            (self.DG_vars.num_states, self.DG_vars.Np*self.DG_vars.K),
+            order='F'
+            )
+        q_old_2 = np.reshape(
+            q_old_2,
             (self.DG_vars.num_states, self.DG_vars.Np*self.DG_vars.K),
             order='F'
             )
         
         if self.primitive_to_conservative is not None:
             q_cons = self.primitive_to_conservative(q).flatten('F')
-            q_old_cons = self.primitive_to_conservative(q_old).flatten('F')
+            q_old_1_cons = self.primitive_to_conservative(q_old_1).flatten('F')
+            q_old_2_cons = self.primitive_to_conservative(q_old_2).flatten('F')
 
-            time_derivative = (q_cons - q_old_cons)/step_size
+            time_derivative = (q_cons - 4/3*q_old_1_cons + 1/3*q_old_2_cons)/step_size
         else:
-            time_derivative = (q - q_old)/step_size
-
+            time_derivative = (q - 4/3*q_old_1 + 1/3*q_old_2)/step_size
 
         pde_rhs = rhs(
             t = t_new, 
             q = q
             ).flatten('F')
         time_derivative = time_derivative.flatten('F')
-
-        residual = time_derivative - pde_rhs
-
+        
+        residual = time_derivative - 2/3*pde_rhs
         return residual
 
     def time_step(self, t, q, step_size, rhs):
         """Take a time step."""
 
-        q_init = q.copy()
-        q_init = q_init.flatten('F')
+        q_init_1 = q[1].copy()
+        q_init_1 = q_init_1.flatten('F')
+
+        q_init_2 = q[0].copy()
+        q_init_2 = q_init_2.flatten('F')
 
         t_new = t + step_size
 
-        implicit_euler_rhs = partial(
-            self._implicit_euler_rhs,
+        BDF2_rhs = partial(
+            self._BDF2_rhs,
             t_new = t_new,
-            q_old = q.flatten('F'),
+            q_old_1 = q_init_1.flatten('F'),
+            q_old_2 = q_init_2.flatten('F'),
             rhs = rhs,
             step_size = step_size
             )
 
         q = self.newton_solver.solve(
-            func = implicit_euler_rhs,
-            q = q_init,
+            func = BDF2_rhs,
+            q = q_init_1,
             )
 
         q = q.reshape(
