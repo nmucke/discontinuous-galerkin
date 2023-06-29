@@ -60,7 +60,7 @@ class GeneralizedSlopeLimiter(BaseStabilizer):
 
         return mfunc
 
-    def _SlopeLimitLin(self,ul,xl,vm1,v0,vp1):
+    def _slope_limit_lin(self,ul,xl,vm1,v0,vp1):
         """ Apply slopelimited on linear function ul(Np,1) on x(Np,1)
             (vm1,v0,vp1) are cell averages left, center, and right"""
 
@@ -75,12 +75,15 @@ class GeneralizedSlopeLimiter(BaseStabilizer):
 
         ulimit = np.ones((self.DG_vars.Np,1))*v0 + (xl-x0)*\
             self._minmodB(
-                np.stack((ux[0,:],np.divide((vp1-v0),h),np.divide((v0-vm1),h)), axis=0)
+                np.stack(
+                    (ux[0,:],np.divide((vp1-v0),h),np.divide((v0-vm1),h)), 
+                    axis=0
+                    )
                 )
 
         return ulimit
 
-    def _SlopeLimitN(self, u):
+    def _slope_limit_N(self, u):
         """ Apply slopelimiter (Pi^N) to u assuming u an N'th order polynomial """
 
         uh = np.dot(self.DG_vars.invV,u)
@@ -108,22 +111,26 @@ class GeneralizedSlopeLimiter(BaseStabilizer):
             uhl[2:(self.DG_vars.Np+1),:] = 0
             ul = np.dot(self.DG_vars.V,uhl)
 
-            ulimit[:,ids] = self._SlopeLimitLin(ul,self.DG_vars.x[:,ids],vkm1[ids],
-                                                vk[0,ids],vkp1[ids])
+            ulimit[:,ids] = self._slope_limit_lin(
+                ul,
+                self.DG_vars.x[:,ids],vkm1[ids],
+                vk[0,ids],vkp1[ids]
+                )
 
         return ulimit
 
     def apply_stabilizer(self, q):
         """ Apply slope limiter to q """
 
+
         states = []
         for i in range(self.DG_vars.num_states):
-                        
-            limited_state = self._SlopeLimitN(np.reshape(
-                q[i],
-                (self.DG_vars.Np, self.DG_vars.K),
-                'F')
-                ).flatten('F')
+            
+            s = np.reshape(q[i],(self.DG_vars.Np, self.DG_vars.K), 'F')
+            limited_state = self._slope_limit_N(s)#.flatten('F')
+            #limited_state[:, 0:5] = s[:, 0:5]
+            #limited_state[:, -5:] = s[:, -5:]
+            limited_state = limited_state.flatten('F')
             
             states.append(limited_state)
 

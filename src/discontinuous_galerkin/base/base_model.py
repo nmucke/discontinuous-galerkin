@@ -12,8 +12,8 @@ from discontinuous_galerkin.time_integrators.CFL import get_CFL_step_size
 from discontinuous_galerkin.steady_state import compute_steady_state 
 
 
-
 #class BaseModel(StartUp1D, Stabilizer, NumericalFlux):
+
 class BaseModel():
     """
     Base class for all models.
@@ -52,10 +52,18 @@ class BaseModel():
         # Check if the eigenvalues and eigenvectors are implemented
         if getattr(self.eigen, '__isabstractmethod__', False):
             self.eigen = None
-        
+            
         # Check if the system Jacobian is implemented
         if getattr(self.system_jacobian, '__isabstractmethod__', False):
             self.system_jacobian = None
+        
+        # Check if primitive_to_conservative is implemented
+        if getattr(self.primitive_to_conservative, '__isabstractmethod__', False):
+            self.primitive_to_conservative = None
+        
+        # Check if conservative_to_primitive is implemented
+        if getattr(self.conservative_to_primitive, '__isabstractmethod__', False):
+            self.conservative_to_primitive = None
         
         # Initialize the numerical flux
         self.numerical_flux = factories.get_numerical_flux(
@@ -64,6 +72,8 @@ class BaseModel():
             system_jacobian=self.system_jacobian,
             eigen=self.eigen,
             velocity=self.velocity,
+            primitive_to_conservative=self.primitive_to_conservative,
+            conservative_to_primitive=self.conservative_to_primitive,
         )
         
         # Initialize the boundary conditions
@@ -76,6 +86,9 @@ class BaseModel():
             system_jacobian=self.system_jacobian,
             source=self.source,
             transform_matrices=self.transform_matrices,
+            primitive_to_conservative=self.primitive_to_conservative,
+            conservative_to_primitive=self.conservative_to_primitive,
+            eigen=self.eigen,
         )
 
         # initialize steady state BCs
@@ -84,10 +97,14 @@ class BaseModel():
             BC_args={
                 'type': 'dirichlet',
                 'treatment': 'naive',
+                'state_or_flux': {'left': 'state', 'right': 'state'},
             },
             numerical_flux=self.numerical_flux,
             boundary_conditions=self.boundary_conditions,
             flux=self.flux,
+            system_jacobian=self.system_jacobian,
+            source=self.source,
+            transform_matrices=self.transform_matrices,
         )
         
         # Initialize the time integrator
@@ -101,7 +118,19 @@ class BaseModel():
             DG_vars=self.DG_vars,
             time_integrator_args=time_integrator_args,
             stabilizer=self.stabilizer,
+            primitive_to_conservative=self.primitive_to_conservative,
+            conservative_to_primitive=self.conservative_to_primitive,
         )
+        if self.time_integrator_args['type'] == 'BDF2':
+            self.init_time_integrator_args = time_integrator_args.copy()
+            self.init_time_integrator_args['type'] = 'implicit_euler'
+            self.init_time_integrator = factories.get_time_integrator(
+                DG_vars=self.DG_vars,
+                time_integrator_args=self.init_time_integrator_args,
+                stabilizer=self.stabilizer,
+                primitive_to_conservative=self.primitive_to_conservative,
+                conservative_to_primitive=self.conservative_to_primitive,
+            )
 
 
     def __str__(self):
@@ -127,6 +156,17 @@ class BaseModel():
 
         raise NotImplementedError
 
+    @abstractmethod
+    def primitive_to_conservative(self, q):
+
+        raise NotImplementedError
+
+    
+    @abstractmethod
+    def conservative_to_primitive(self, q):
+
+        raise NotImplementedError
+    
     @abstractmethod
     def eigen(self, q):
         """Compute the eigenvalues and eigenvectors."""
@@ -183,9 +223,6 @@ class BaseModel():
         #conv = np.array(self.primitive_to_conservative(q))
         
         # Compute the numerical flux
-        rho_g_A_g, rho_l_A_l, rho_m_u_m_A = self.primitive_to_conservative(q)
-        q_cons = np.array([rho_g_A_g, rho_l_A_l, rho_m_u_m_A])
-
         numerical_flux = self.numerical_flux(
             q_inside=q[:, self.DG_vars.vmapM], 
             q_outside=q[:, self.DG_vars.vmapP],
@@ -198,17 +235,26 @@ class BaseModel():
         source = self.source(t, q)
     
         # Compute boundary conditions
-        q_boundary=q[:, [self.DG_vars.vmapI, self.DG_vars.vmapO]]
-        flux_boundary=flux[:, [self.DG_vars.vmapI, self.DG_vars.vmapO]]
-        numerical_flux[:, self.DG_vars.mapI], numerical_flux[:, self.DG_vars.mapO] = \
-            self.BCs.apply_boundary_conditions(
-                t=t, 
-                q_boundary=q_boundary,
-                flux_boundary=flux_boundary,
-                step_size=self.step_size,
-                #primitive_to_conservative=self.primitive_to_conservative
-                )
-    
+        if self.steady_state_solve:
+            q_boundary=q[:, [self.DG_vars.vmapI, self.DG_vars.vmapO]]
+            flux_boundary=flux[:, [self.DG_vars.vmapI, self.DG_vars.vmapO]]
+            numerical_flux[:, self.DG_vars.mapI], numerical_flux[:, self.DG_vars.mapO] = \
+                self.steady_state_BCs.apply_boundary_conditions(
+                    t=t, 
+                    q_boundary=q_boundary,
+                    flux_boundary=flux_boundary,
+                    step_size=self.step_size,
+                    )
+        if self.BC_args['treatment'] == 'naive' and not self.steady_state_solve:
+            q_boundary=q[:, [self.DG_vars.vmapI, self.DG_vars.vmapO]]
+            flux_boundary=flux[:, [self.DG_vars.vmapI, self.DG_vars.vmapO]]
+            numerical_flux[:, self.DG_vars.mapI], numerical_flux[:, self.DG_vars.mapO] = \
+                self.BCs.apply_boundary_conditions(
+                    t=t, 
+                    q_boundary=q_boundary,
+                    flux_boundary=flux_boundary,
+                    step_size=self.step_size,
+                    )
         d_flux = self.DG_vars.nx * (flux[:, self.DG_vars.vmapM] - numerical_flux)
 
         # Reshape the flux and source terms
@@ -230,11 +276,24 @@ class BaseModel():
             - np.multiply(self.DG_vars.rx, self.DG_vars.Dr @ flux) \
             + self.DG_vars.LIFT @ (np.multiply(self.DG_vars.Fscale, d_flux)) \
             + source
-
+        
+        if self.BC_args['treatment'] == 'characteristic' and not self.steady_state_solve:
+        
+            BCs_left, BCs_right  = self.BCs.get_BC_rhs(
+                t=t, 
+                q=q, 
+                source=source,
+                #primitive_to_conservative=self.primitive_to_conservative
+                )
+            
+            rhs[:, 0, 0] = BCs_left
+            rhs[:, -1, -1] = BCs_right
+            
         rhs = rhs.reshape(
             (self.DG_vars.num_states, self.DG_vars.Np * self.DG_vars.K), 
             order='F'
             )
+        
         
         return rhs
 
@@ -282,18 +341,34 @@ class BaseModel():
                 self.step_size = get_CFL_step_size(
                     velocity=self.velocity(sol[-1]), 
                     min_dx=self.DG_vars.dx, 
-                    CFL=.1
+                    CFL=.9
                     )
 
             if t + self.step_size - 1e-1 > t_final:
                 self.step_size = t_final - t
             
-            sol_, t = self.time_integrator(
-                t=t_vec[-1], 
-                q=sol[-1],
-                step_size=self.step_size,
-                rhs=self.compute_rhs
-                )
+            if self.time_integrator_args['type'] == 'BDF2':
+                if len(sol) < 2:
+                    sol_, t = self.init_time_integrator(
+                    t=t_vec[-1], 
+                    q=sol[-1],
+                    step_size=self.step_size,
+                    rhs=self.compute_rhs
+                    )
+                else:
+                    sol_, t = self.time_integrator(
+                        t=t_vec[-1], 
+                        q=sol[-2:],
+                        step_size=self.step_size,
+                        rhs=self.compute_rhs
+                        )
+            else:
+                sol_, t = self.time_integrator(
+                    t=t_vec[-1], 
+                    q=sol[-1],
+                    step_size=self.step_size,
+                    rhs=self.compute_rhs
+                    )
             
             t_vec.append(t)
 

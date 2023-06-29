@@ -17,7 +17,6 @@ class LaxFriedrichsFlux(BaseNumericalFlux):
         self.DG_vars = DG_vars
         self.alpha = alpha
         self.velocity = velocity
-        self.velocity=lambda q: np.abs(q)
 
         self.nx_boundary = np.array(
             [self.DG_vars.nx[self.DG_vars.mapI], self.DG_vars.nx[self.DG_vars.mapO]]
@@ -46,32 +45,36 @@ class LaxFriedrichsFlux(BaseNumericalFlux):
         flux_outside,
         on_boundary=False,
         primitive_to_conservative=None,
+        BC_state_or_flux=None
         ):
         """Compute the numerical flux."""
 
         if primitive_to_conservative is not None:
-            q_inside = np.array(primitive_to_conservative(q_inside))
-            q_outside = np.array(primitive_to_conservative(q_outside))
-
+            q_inside = primitive_to_conservative(q_inside)
+            q_outside = primitive_to_conservative(q_outside)
 
         # Compute the velocity
         C_inside = self.velocity(q_inside)
         C_outside = self.velocity(q_outside)
         C = np.maximum(np.abs(C_inside), np.abs(C_outside))
 
-
         # Compute the average of the fluxes
         flux_average = self._average_operator(flux_inside, flux_outside)
 
-        # Compute the jump of the states
         if on_boundary:
-            q_jump = self._boundary_jump_operator(q_inside, q_outside)
-            #numerical_flux = flux_average
+
+            numerical_flux = flux_average
+            for i, side in enumerate(['left', 'right']):
+                if BC_state_or_flux[side] == 'flux':
+                    numerical_flux[:, i] = flux_outside[:, i]
+                else:
+                    q_jump = self._boundary_jump_operator(q_inside, q_outside)
+                    numerical_flux[:, i] += C[i] * 0.5 * (1 - self.alpha) * q_jump[:, i]
         else:
             q_jump = self._jump_operator(q_inside, q_outside)
 
             # Compute the numerical flux
-        numerical_flux = flux_average + C * 0.5 * (1 - self.alpha) * q_jump
+            numerical_flux = flux_average + C * 0.5 * (1 - self.alpha) * q_jump
         
         return numerical_flux
 

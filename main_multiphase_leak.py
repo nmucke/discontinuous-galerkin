@@ -8,24 +8,25 @@ from scipy.optimize import fsolve, least_squares
 
 from matplotlib.animation import FuncAnimation
 
+from scipy.linalg import eig
+
 
 class PipeflowEquations(BaseModel):
     """Multiphase equation model class."""
 
-    def __init__(
-        self, **kwargs):
+    def __init__(self, **kwargs):
         super().__init__(**kwargs)
         
-        self.L = 10000 # meters
-        self.d = 0.146 # meters
+        self.L = basic_args['xmax'] # meters
+        self.d = 0.2#0.146 # meters
         self.A = np.pi*self.d**2/4 # meters^2
         self.c = 308. # m/s
         self.rho_g_norm = 1.26 # kg/m^3
         self.rho_l = 1003. # kg/m^3
-        self.p_amb = 101325.
+        self.p_amb = 1.01325e5 # Pa
         self.p_norm = 1.0e5 # Pa
         self.p_outlet = 1.0e6 # Pa
-        self.e = 1e-8 # meters
+        self.e = 1e-8#1e-8 # meters
         self.mu_g = 1.8e-5 # Pa*s
         self.mu_l = 1.516e-3 # Pa*s
         self.Cd = 5e-4
@@ -33,6 +34,14 @@ class PipeflowEquations(BaseModel):
         self.T = 278 # Kelvin
 
         self.rho_l = 1000. # kg/m^3
+
+        self.leak = True
+
+        self.D_orifice = 0.05
+        self.A_orifice = np.pi*(self.D_orifice/2)**2
+        self.leak_location = 3500
+        self.Cd = .01
+        self.Cv = self.A/np.sqrt(self.rho_g_norm/2 * ((self.A/(self.A_orifice*self.Cd))**2-1))
 
         self.conservative_or_primitive = 'primitive'
         
@@ -63,9 +72,9 @@ class PipeflowEquations(BaseModel):
 
         rho_m = rho_g * alpha_g + self.rho_l * alpha_l
 
-        u_m = q[2]/rho_m
+        u_m = q[2]/rho_m/self.A
 
-        return np.array([A_l, p, u_m])
+        return np.array([A_l, p/self.p_outlet, u_m])
     
     def primitive_to_conservative(self, q):
         """Compute the conservative variables from the primitive variables."""
@@ -90,27 +99,65 @@ class PipeflowEquations(BaseModel):
         return np.array([rho_g_A_g, rho_l_A_l, rho_m_u_m_A])
     
 
+    def jacobian(self, q):
+        """Compute the Jacobian of the flux function."""
+
+        A_l = q[0]
+        p = q[1]*self.p_outlet
+        u_m = q[2]
+
+        return 2
+    
+    '''
+    def eigen(self, q, outward_unit_normal=None):
+
+        A_l = q[0]
+        p = q[1]*self.p_outlet
+        u_m = q[2]
+
+        rho_g = self.pressure_to_density(p)
+        A_g = self.A-A_l
+
+
+        c_g_squared = rho_g * self.T_norm / self.rho_g_norm / self.T_norm
+
+        A = np.zeros((self.DG_vars.num_states, self.DG_vars.num_states))
+        A[0, :] = np.array([u_m, 0, A_l])
+        A[1, :] = np.array([0, u_m, p*self.A/A_g])
+        A[2, :] = np.array([0, c_g_squared*self.A/(A_l*self.rho_l*c_g_squared + A_g*p), u_m])
+
+
+        if outward_unit_normal is not None:
+
+            B = outward_unit_normal * A
+            Lambda, R = eig(B, right=True)
+            Lambda = Lambda.real
+
+            Lambda_minus = np.diag(np.minimum(Lambda,0))
+            Lambda_plus = np.diag(np.maximum(Lambda,0))
+
+            R_inv = np.linalg.inv(R)
+            B_minus = np.matmul(R, np.matmul(Lambda_minus, R_inv))
+            B_plus = np.matmul(R, np.matmul(Lambda_plus, R_inv))
+
+            return B_minus, B_plus, R
+        else:
+            Lambda, R = eig(A, right=True)
+            Lambda = Lambda.real
+
+            return Lambda, R
+    '''
+    '''
     def eigen(self, q):
         """Compute the eigenvalues and eigenvectors of the flux Jacobian."""
         
-        if self.conservative_or_primitive == 'conservative':
-            rho_g_A_g = q[0]
-            rho_l_A_l = q[1]
-            rho_m_u_m = q[2]
-
-            A_l, p, u_m = self.conservative_to_primitive(q=q)
-        elif self.conservative_or_primitive == 'primitive':
-            A_l = q[0]
-            p = q[1]
-            u_m = q[2]
-
-            rho_g_A_g, rho_l_A_l, rho_m_u_m = self.primitive_to_conservative(q=q)
+        A_l = q[0]
+        p = q[1]*self.p_outlet
+        u_m = q[2]
 
         rho_g = self.pressure_to_density(p)
 
         A_g = self.A - A_l
-
-        rho_m = rho_g * A_g + self.rho_l * A_l
 
         c_g_squared = rho_g * self.T_norm / self.rho_g_norm / self.T_norm
 
@@ -151,91 +198,7 @@ class PipeflowEquations(BaseModel):
         D[2, 2] = u_m
 
         return D, L, R
-
-    def transform_matrices(
-        self, 
-        t: float, 
-        q: np.ndarray = None,
-        ):
-        """Compute the conservative to primitive transform matrices."""
-
-        if self.conservative_or_primitive == 'conservative':
-            rho_g_A_g = q[0]
-            rho_l_A_l = q[1]
-            rho_m_u_m = q[2]
-
-            A_l, p, u_m = self.conservative_to_primitive(q=q)
-        elif self.conservative_or_primitive == 'primitive':
-            A_l = q[0]
-            p = q[1]*self.p_outlet
-            u_m = q[2]
-
-            rho_g_A_g, rho_l_A_l, rho_m_u_m = self.primitive_to_conservative(q=q)
-
-        rho_g = self.pressure_to_density(p)
-
-        A_g = self.A - A_l
-
-        rho_m = rho_g * A_g + self.rho_l * A_l
-
-        c_g_squared = rho_g * self.T_norm / self.rho_g_norm / self.T_norm
-
-        P = np.zeros((self.DG_vars.num_states, self.DG_vars.num_states))
-        P_inv = np.zeros((self.DG_vars.num_states, self.DG_vars.num_states))
-        A = np.zeros((self.DG_vars.num_states, self.DG_vars.num_states))
-        S = np.zeros((self.DG_vars.num_states, self.DG_vars.num_states))
-        S_inv = np.zeros((self.DG_vars.num_states, self.DG_vars.num_states))
-        Lambda = np.zeros((self.DG_vars.num_states, self.DG_vars.num_states))
-
-        drho_gdp = self.rho_g_norm * self.T_norm / self.p_norm / self.T_norm
-        drho_ldp = 0
-        drho_mdA_l = self.rho_l/self.A
-        drho_mdp = drho_gdp*A_g/self.A
-        P[0, :] = np.array([-rho_g, A_g * drho_gdp, 0])
-        P[1, :] = np.array([self.rho_l, A_l * drho_ldp, 0])
-        P[2, :] = np.array([u_m * drho_mdA_l * self.A, u_m * drho_mdp * self.A, rho_m * self.A])
-
-        P_inv = np.linalg.inv(P)
-
-        A[0, :] = np.array([u_m, 0, A_l])
-        A[1, :] = np.array([0, u_m, p*self.A/A_g])
-        A[2, :] = np.array(
-            [0, c_g_squared * self.A/(A_l * self.rho_l * c_g_squared + A_g * p), u_m]
-            )
-
-        term_1 = np.sqrt(A_l * self.rho_l * c_g_squared + A_g * p)
-        term_2 = self.A * np.sqrt(c_g_squared) * np.sqrt(p)
-
-        S[0, :] = np.array(
-            [-np.sqrt(A_g) * A_l * term_1 / term_2, np.sqrt(A_g) * A_l * term_1 / term_2, 1.]
-            )
-        S[1, :] = np.array(
-            [-np.sqrt(p) * term_1 / term_2, np.sqrt(p) * term_1 / term_2, 0.]
-            )
-        S[2, :] = np.array(
-            [1., 1., 0.]
-            ) 
-        
-        S_inv[0, :] = np.array(
-            [0, -np.sqrt(A_g * c_g_squared) / (2 * np.sqrt(p) * term_1), 0.5]
-            )
-        S_inv[1, :] = np.array(
-            [0, np.sqrt(A_g * c_g_squared) / (2 * np.sqrt(p) * term_1), 0.5]
-            )
-        S_inv[2, :] = np.array(
-            [1, - A_g * A_l / (self.A * p), 0]
-            ) 
-
-        term_1 = A_g**(3/2) * p * u_m
-        term_2 = self.A * np.sqrt(c_g_squared) * np.sqrt(p) * np.sqrt(A_l * self.rho_l * c_g_squared + A_g * p)
-        term_3 = np.sqrt(A_g) * A_l * c_g_squared * self.rho_l * u_m
-        term_4 = A_g**(3/2) * p + np.sqrt(A_g) * A_l * c_g_squared * self.rho_l
-
-        Lambda[0, 0] = (term_1 - term_2 + term_3) / term_4
-        Lambda[1, 1] = (term_1 + term_2 + term_3) / term_4
-        Lambda[2, 2] = u_m
-
-        return P, P_inv, A, S, S_inv, Lambda
+    '''
 
     def friction_factor(self, q):
         """Compute the friction factor."""
@@ -304,41 +267,170 @@ class PipeflowEquations(BaseModel):
 
         return init
     
+    def transform_matrices(
+        self, 
+        t: float, 
+        q: np.ndarray = None,
+        ):
+        """Compute the conservative to primitive transform matrices."""
+
+        A_l = q[0]
+        p = q[1]*self.p_outlet
+        u_m = q[2]
+
+        rho_g = self.pressure_to_density(p)
+
+        A_g = self.A - A_l
+
+        alpha_l = A_l/self.A
+        alpha_g = A_g/self.A
+
+        #rho_m = rho_g * A_g + self.rho_l * A_l
+        rho_m = rho_g * alpha_g + self.rho_l * alpha_l
+
+        c_g_squared = rho_g * self.T_norm / self.rho_g_norm / self.T_norm
+
+        P = np.zeros((self.DG_vars.num_states, self.DG_vars.num_states))
+        P_inv = np.zeros((self.DG_vars.num_states, self.DG_vars.num_states))
+        A = np.zeros((self.DG_vars.num_states, self.DG_vars.num_states))
+        S = np.zeros((self.DG_vars.num_states, self.DG_vars.num_states))
+        S_inv = np.zeros((self.DG_vars.num_states, self.DG_vars.num_states))
+        Lambda = np.zeros((self.DG_vars.num_states, self.DG_vars.num_states))
+
+        drho_gdp = self.rho_g_norm * self.T_norm / self.p_norm / self.T_norm
+        drho_ldp = 0
+        drho_mdA_l = self.rho_l/self.A
+        drho_mdp = drho_gdp*A_g/self.A
+        P[0, :] = np.array([-rho_g, A_g * drho_gdp, 0])
+        P[1, :] = np.array([self.rho_l, A_l * drho_ldp, 0])
+        P[2, :] = np.array([u_m * drho_mdA_l * self.A, u_m * drho_mdp * self.A, rho_m * self.A])
+
+        P_inv = np.linalg.inv(P)
+
+        A[0, :] = np.array([u_m, 0, A_l])
+        A[1, :] = np.array([0, u_m, p*self.A/A_g])
+        A[2, :] = np.array(
+            [0, c_g_squared * self.A/(A_l * self.rho_l * c_g_squared + A_g * p), u_m]
+            )
+        term_1 = np.sqrt(A_l * self.rho_l * c_g_squared + A_g * p)
+        term_2 = self.A * np.sqrt(c_g_squared) * np.sqrt(p)
+
+        S[0, :] = np.array(
+            [-np.sqrt(A_g) * A_l * term_1 / term_2, np.sqrt(A_g) * A_l * term_1 / term_2, 1.]
+            )
+        S[1, :] = np.array(
+            [-np.sqrt(p) * term_1 / term_2, np.sqrt(p) * term_1 / term_2, 0.]
+            )
+        S[2, :] = np.array(
+            [1., 1., 0.]
+            ) 
+        
+        S_inv[0, :] = np.array(
+            [0, -np.sqrt(A_g * c_g_squared) / (2 * np.sqrt(p) * term_1), 0.5]
+            )
+        S_inv[1, :] = np.array(
+            [0, np.sqrt(A_g * c_g_squared) / (2 * np.sqrt(p) * term_1), 0.5]
+            )
+        S_inv[2, :] = np.array(
+            [1, - A_g * A_l / (self.A * p), 0]
+            ) 
+
+        term_1 = A_g**(3/2) * p * u_m
+        term_2 = self.A * np.sqrt(c_g_squared) * np.sqrt(p) * np.sqrt(A_l * self.rho_l * c_g_squared + A_g * p)
+        term_3 = np.sqrt(A_g) * A_l * c_g_squared * self.rho_l * u_m
+        term_4 = A_g**(3/2) * p + np.sqrt(A_g) * A_l * c_g_squared * self.rho_l
+
+        Lambda[0, 0] = (term_1 - term_2 + term_3) / term_4
+        Lambda[1, 1] = (term_1 + term_2 + term_3) / term_4
+        Lambda[2, 2] = u_m
+        '''
+
+        Lambda, S = eig(A, right=True, left=False)
+
+        Lambda = np.diag(Lambda.real)
+
+        S_inv = np.linalg.inv(S)
+        '''
+
+
+        return P, P_inv, A, S, S_inv, Lambda
+
+    def BC_eqs(self, q, gas_mass_inflow, liquid_mass_inflow):
+
+        A_l = q[0]
+        p = q[1]*self.p_outlet
+        u_m = q[2]
+
+        rho_g = self.pressure_to_density(p)
+
+        A_g = self.A - A_l
+
+        gas_mass_flow = rho_g * A_g * u_m
+        liquid_mass_flow = self.rho_l * A_l * u_m
+
+        return np.array([gas_mass_flow - gas_mass_inflow, liquid_mass_flow - liquid_mass_inflow, 0.0])
 
     def boundary_conditions(self, t=0, q=None):
         """Compute the boundary conditions."""
-
-        #A_l_left, p_left, u_m_left = self._get_primitive_BCs_left(q[:,0], t=t)
-
-
-        BC_state_1 = {
-            'left': None,
-            'right': None,
-        }
-        BC_state_2 = {
-            'left': None,
-            'right': 1.#self.p_outlet,
-        }
-        BC_state_3 = {
-            'left': None,
-            'right': None
-        }
-
-        BCs_state = [BC_state_1, BC_state_2, BC_state_3]
-
-        t_start = 100
-        t_end = 110
+        
+        t_start = 500000.
+        t_end = 1500000000.
 
         # a increases linearly from 0.2 to 0.4 over 10 seconds
         if t < t_end and t > t_start:
             t_ = t - t_start
             gas_mass_inflow = 0.2 + 0.02 * t_ / 10
         elif t > t_end:
-            gas_mass_inflow = 0.4 #+ 0.1*np.sin(t/200)
+            gas_mass_inflow = 0.4
         else:
-            gas_mass_inflow = 0.2
+            gas_mass_inflow = 0.2# + 0.02 * np.cos(2*np.pi*t/10)
 
-        liquid_mass_inflow = 20.
+        liquid_mass_inflow = 20.0
+
+        if len(q.shape) == 1:
+            rho_g = self.pressure_to_density(q[1]*self.p_outlet)
+        else:
+            rho_g = self.pressure_to_density(q[1]*self.p_outlet)[0]
+        _alpha_l  = liquid_mass_inflow/self.rho_l / (gas_mass_inflow/rho_g + liquid_mass_inflow/self.rho_l)
+        _u_m = liquid_mass_inflow /(self.rho_l * self.A * _alpha_l)
+
+        func = lambda q: self.BC_eqs(q, gas_mass_inflow, liquid_mass_inflow)
+        q_guess = np.array([_alpha_l*self.A, self.density_to_pressure(rho_g)/1e6, _u_m])
+        q_sol = fsolve(func, q_guess)
+
+        A_l = q_sol[0]
+        p = q_sol[1]*self.p_outlet
+        u_m = q_sol[2]
+
+        #print('A_l: ', A_l-_alpha_l*self.A, 'u_m: ', u_m-_u_m)
+
+        if self.steady_state_solve or self.BC_args['treatment'] == 'naive':
+            BC_state_1 = {
+                'left': A_l,
+                'right': None,
+            }
+            BC_state_2 = {
+                'left': None,
+                'right': 1.#self.p_outlet,
+            }
+            BC_state_3 = {
+                'left': u_m,#,
+                'right': None
+            }
+        else:
+            BC_state_1 = {
+                'left': (q[0] - A_l) / self.step_size,
+                'right': None,
+            }
+            BC_state_2 = {
+                'left': None,
+                'right': 0.,#(q[1] - 1.0) / self.step_size,
+            }
+            BC_state_3 = {
+                'left': (q[2] - u_m) / self.step_size,
+                'right': None
+            }
+
 
         BC_flux_1 = {
             'left': gas_mass_inflow,
@@ -353,6 +445,7 @@ class PipeflowEquations(BaseModel):
             'right': None
         }
 
+        BCs_state = [BC_state_1, BC_state_2, BC_state_3]
         BCs_flux = [BC_flux_1, BC_flux_2, BC_flux_3]
 
         BCs = {
@@ -370,6 +463,10 @@ class PipeflowEquations(BaseModel):
         p = q[1]*self.p_outlet
         u_m = q[2]
 
+        return np.maximum(np.abs(u_m + self.c), np.abs(u_m - self.c))
+
+        '''
+
         A_g = self.A - A_l
 
         rho_g = self.pressure_to_density(p)
@@ -385,6 +482,7 @@ class PipeflowEquations(BaseModel):
         lambda_3 = u_m
 
         return np.maximum(np.abs(lambda_1), np.abs(lambda_2), np.abs(lambda_3))
+        '''
         
     def flux(self, q):
         """Compute the flux."""
@@ -414,23 +512,32 @@ class PipeflowEquations(BaseModel):
     def source(self, t, q):
         """Compute the source."""
 
+        A_l = q[0]
+        p = q[1]*self.p_outlet
+        u_m = q[2]
+
+        alpha_l = A_l/self.A
+        alpha_g = 1 - alpha_l
+
+        rho_g = self.pressure_to_density(p)
+        rho_m = rho_g * alpha_g + self.rho_l * alpha_l
+        
         s = np.zeros((self.DG_vars.num_states,self.DG_vars.Np*self.DG_vars.K))
 
-        '''
+        
         point_source = np.zeros((self.DG_vars.Np*self.DG_vars.K))
         if t>0:
             x = pipe_DG.DG_vars.x.flatten('F')
-            width = 50
+            width = 100
             point_source = \
-                (np.heaviside(x-500 + width/2, 1) - np.heaviside(x-500-width/2, 1))
+                (np.heaviside(x-self.leak_location + width/2, 1) - np.heaviside(x-self.leak_location-width/2, 1))
             point_source *= 1/width
 
-        rho = q[0]/self.A
-        p = self.density_to_pressure(rho)
+            leak_mass = self.Cv * np.sqrt(rho_m * (p - self.p_amb)) * point_source
 
-        s[0] = - self.Cd * np.sqrt(rho * (p - self.p_amb)) * point_source
-        s[0] *= 0.
-        '''
+            s[0] = -alpha_g * leak_mass
+            s[1] = -alpha_l * leak_mass
+            
         s[-1] = -self.friction_factor(q)
 
         return s
@@ -441,26 +548,26 @@ if __name__ == '__main__':
     basic_args = {
         'xmin': 0,
         'xmax': 10000,
-        'num_elements': 200,
+        'num_elements': 750,
         'num_states': 3,
-        'polynomial_order': 4,
+        'polynomial_order': 2,
         'polynomial_type': 'legendre',
     }
 
-    steady_state = {
+    steady_state_args = {
         'newton_params':{
             'solver': 'direct',
             'max_newton_iter': 200,
-            'newton_tol': 1e-5
+            'newton_tol': 1e-8,
+            'num_jacobian_reuses': 1000,
         }
     }
 
     numerical_flux_args = {
         'type': 'lax_friedrichs',
-        'alpha': .5,
-    }    
+        'alpha': 0.5,
+    }
     
-    '''
     stabilizer_args = {
         'type': 'slope_limiter',
         'second_derivative_upper_bound': 1e-8,
@@ -469,27 +576,23 @@ if __name__ == '__main__':
     stabilizer_args = {
         'type': 'filter',
         'num_modes_to_filter': 20,
-        'filter_order': 6,
+        'filter_order': 36,
     }
+    '''
     time_integrator_args = {
-        'type': 'implicit_euler',
-        'step_size': 2,
+        'type': 'BDF2',
+        'step_size': .001,
         'newton_params': {
             'solver': 'direct',
             'max_newton_iter': 200,
-            'newton_tol': 1e-5
+            'newton_tol': 1e-8,
+            'num_jacobian_reuses': 1000,
         }
     }
-    '''
-    time_integrator_args = {
-        'type': 'SSPRK',
-    }
-    '''
-
     BC_args = {
         'type': 'dirichlet',
         'treatment': 'naive',
-        'form': {'left': 'primitive', 'right': 'primitive'},
+        'state_or_flux': {'left': 'flux', 'right': 'state'},
     }
 
     pipe_DG = PipeflowEquations(
@@ -500,17 +603,18 @@ if __name__ == '__main__':
         numerical_flux_args=numerical_flux_args,
     )
     
+            
     init = pipe_DG.initial_condition(pipe_DG.DG_vars.x.flatten('F'))
 
-    t_final = 4000.
+    t_final = 10.0
     sol, t_vec = pipe_DG.solve(
         t=0, 
         q_init=init, 
         t_final=t_final, 
-        steady_state_args=steady_state
+        steady_state_args=steady_state_args
     )
 
-    x = np.linspace(0, 10000, 2000)
+    x = np.linspace(0, basic_args['xmax'], 2000)
 
     A_l = np.zeros((len(x), len(t_vec)))
     p = np.zeros((len(x), len(t_vec)))
@@ -522,30 +626,27 @@ if __name__ == '__main__':
     
     
     u = u_m
-    alpha_l = A_l/pipe_DG.A#rho_l_A_l/pipe_DG.A/pipe_DG.rho_l
-    #alpha_l = u_m
+    alpha_l = A_l/pipe_DG.A
+    alpha_g = 1 - alpha_l
 
     
     rho_g = pipe_DG.pressure_to_density(p*pipe_DG.p_outlet)
     rho_g_A_g_u_m = u_m * rho_g * (pipe_DG.A - A_l)
     rho_l_A_l_u_m = u_m * pipe_DG.rho_l * A_l
     print(rho_g_A_g_u_m[0, :])
-    #alpha_l = p
-    #pdb.set_trace()
-    #print(alpha_l[0, -1])
 
-    #alpha_l = p
     
     t_vec = np.arange(0, u.shape[1]-1)
 
     plt.figure()
-    plt.imshow(alpha_l, extent=[0, t_final, 10000, 0], aspect='auto')
+    plt.imshow(alpha_l, extent=[0, t_final, basic_args['xmax'], 0], aspect='auto')
     plt.colorbar()
     plt.show()
 
     plt.figure()
     #plt.plot(x, alpha_l[:, 0], label='alpha_l', linewidth=2)
     plt.plot(x, alpha_l[:, -1], label='alpha_l', linewidth=2)
+    plt.plot(x, alpha_g[:, -1], label='alpha_g', linewidth=2)
     #plt.ylim(0.1, 0.75)
     #plt.ylim(18, 35)
     plt.grid()
@@ -553,27 +654,37 @@ if __name__ == '__main__':
     plt.savefig('pipeflow.png')
     plt.show()
 
-    if alpha_l.shape[-1] > 200:
-        t_idx = np.linspace(0, alpha_l.shape[-1]-1, 200, dtype=int)
+    num_steps_to_plot = 1000
+    if alpha_l.shape[-1] > num_steps_to_plot:
+
+        t_idx = np.linspace(0, alpha_l.shape[-1]-1, num_steps_to_plot, dtype=int)
+
         alpha_l = alpha_l[:, t_idx]
+        alpha_g = alpha_g[:, t_idx]
+        u = u[:, t_idx]
+        p = p[:, t_idx]
 
     t_vec = np.arange(0, alpha_l.shape[-1])
 
     fig, ax = plt.subplots()
-    xdata, ydata = [], []
+    xdata, ydata, ydata_1 = [], [], []
     ln, = ax.plot([], [], lw=3, animated=True)
+    ln_1, = ax.plot([], [], lw=3, animated=True)
 
     def init():
-        ax.set_xlim(0, 10000)
-        ax.set_ylim(alpha_l.min(), alpha_l.max())
+        ax.set_xlim(0, basic_args['xmax'])
+        ax.set_ylim(u.min(), u.max())
+        #ax.set_ylim(0.1, 0.9)
         #ax.set_ylim(18, 35)
         return ln,
 
     def update(frame):
         xdata.append(x)
-        ydata.append(alpha_l[:, frame])
-        ln.set_data(x, alpha_l[:, frame])
-        return ln,
+        ydata.append(u[:, frame])
+        #ydata_1.append(alpha_g[:, frame])
+        ln.set_data(x, u[:, frame])
+        #ln_1.set_data(x, alpha_g[:, frame])
+        return ln, #ln_1,
 
     ani = FuncAnimation(
         fig,
@@ -583,5 +694,70 @@ if __name__ == '__main__':
         blit=True,
         interval=10,
         )
-    ani.save('pipeflow.gif', fps=30)
+    ani.save('pipeflow_velocity.gif', fps=30)
+    plt.show()
+
+    fig, ax = plt.subplots()
+    xdata, ydata, ydata_1 = [], [], []
+    ln, = ax.plot([], [], lw=3, animated=True)
+    ln_1, = ax.plot([], [], lw=3, animated=True)
+
+    def init():
+        ax.set_xlim(0, basic_args['xmax'])
+        ax.set_ylim(p.min(), p.max())
+        #ax.set_ylim(0.1, 0.9)
+        #ax.set_ylim(18, 35)
+        return ln,
+
+    def update(frame):
+        xdata.append(x)
+        ydata.append(p[:, frame])
+        #ydata_1.append(alpha_g[:, frame])
+        ln.set_data(x, p[:, frame])
+        #ln_1.set_data(x, alpha_g[:, frame])
+        return ln, #ln_1,
+
+    ani = FuncAnimation(
+        fig,
+        update,
+        frames=t_vec,
+        init_func=init, 
+        blit=True,
+        interval=10,
+        )
+    ani.save('pipeflow_pressure.gif', fps=30)
+    plt.show()
+
+
+    t_vec = np.arange(0, alpha_l.shape[-1])
+
+    fig, ax = plt.subplots()
+    xdata, ydata, ydata_1 = [], [], []
+    ln, = ax.plot([], [], lw=3, animated=True)
+    ln_1, = ax.plot([], [], lw=3, animated=True)
+
+    def init():
+        ax.set_xlim(0, basic_args['xmax'])
+        ax.set_ylim(0.1, 0.9)
+        #ax.set_ylim(0.1, 0.9)
+        #ax.set_ylim(18, 35)
+        return ln,
+
+    def update(frame):
+        xdata.append(x)
+        ydata.append(alpha_l[:, frame])
+        ydata_1.append(alpha_g[:, frame])
+        ln.set_data(x, alpha_l[:, frame])
+        ln_1.set_data(x, alpha_g[:, frame])
+        return ln, #ln_1,
+
+    ani = FuncAnimation(
+        fig,
+        update,
+        frames=t_vec,
+        init_func=init, 
+        blit=True,
+        interval=10,
+        )
+    ani.save('pipeflow_holdup.gif', fps=30)
     plt.show()

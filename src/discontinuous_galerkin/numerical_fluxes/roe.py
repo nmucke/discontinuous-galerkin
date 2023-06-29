@@ -10,7 +10,7 @@ class RoeFlux(BaseNumericalFlux):
 
     This class contains the functionality for the Roe numerical flux.
     """
-    def __init__(self, DG_vars, eigen=None, system_jacobian=None):
+    def __init__(self, DG_vars, eigen=None, system_jacobian=None, primitive_to_conservative=None, conservative_to_primitive=None):
         """Initialize the class."""
 
         super(RoeFlux).__init__()
@@ -19,6 +19,9 @@ class RoeFlux(BaseNumericalFlux):
 
         self.eigen = eigen
         self.system_jacobian = system_jacobian
+
+        self.primitive_to_conservative = primitive_to_conservative
+        self.conservative_to_primitive = conservative_to_primitive
 
         self.nx_boundary = np.array(
             [self.DG_vars.nx[self.DG_vars.mapI], self.DG_vars.nx[self.DG_vars.mapO]]
@@ -67,7 +70,9 @@ class RoeFlux(BaseNumericalFlux):
         q_outside, 
         flux_inside, 
         flux_outside,
-        on_boundary=False
+        on_boundary=False,
+        primitive_to_conservative=None,
+        conservative_to_primitive=None,
         ):
         """Compute the numerical flux."""
 
@@ -76,54 +81,29 @@ class RoeFlux(BaseNumericalFlux):
 
         # Compute the jump of the states
         q_roe_average = self._average_operator(q_inside, q_outside)
-        #rho_inner = q_inside[0, :]
-        #rho_outer = q_outside[0, :]
-        #q_roe_average = 1/(np.sqrt(rho_inner) + np.sqrt(rho_outer))
-        #q_roe_average = q_roe_average * (np.sqrt(rho_inner) * q_inside + np.sqrt(rho_outer) * q_outside)
+
 
         # Compute the difference of the states
-        q_diff = (q_outside - q_inside)/2
+        if on_boundary:
+            q_inside_cons = np.stack([self.primitive_to_conservative(q_inside[:, 0]), self.primitive_to_conservative(q_inside[:, 1])], axis=1)
+            q_outside_cons = np.stack([self.primitive_to_conservative(q_outside[:, 0]), self.primitive_to_conservative(q_outside[:, 1])], axis=1)
+        else:
+            q_inside_cons = primitive_to_conservative(q_inside)
+            q_outside_cons = primitive_to_conservative(q_outside)
+        q_diff_cons = (q_outside_cons - q_inside_cons)/2
 
         # Compute the eigenvalues of the system
-        RDL_q_prod = self._get_eigen(q_roe_average, q_diff)
+        RDL_q_prod = self._get_eigen(q_roe_average, q_diff_cons)
 
 
         if on_boundary:
             # Compute the numerical flux
             numerical_flux = flux_average - self.nx_boundary*RDL_q_prod
 
-            '''
-            u_inside = q_inside[1]/q_inside[0]
-            u_outside = q_outside[1]/q_outside[0]
-
-            # Compute the velocity
-            A = 0.2026829916389991
-            C_inside = np.abs(u_inside) + 308/np.sqrt(A)
-            C_outside = np.abs(u_outside) + 308/np.sqrt(A)
-            C = np.maximum(np.abs(C_inside), np.abs(C_outside))
-
-            q_jump = self.nx_boundary * (q_inside - q_outside)
-            lax_numerical_flux = flux_average + C * 0.5 * (1 - 0) * q_jump
-
-            print(lax_numerical_flux-numerical_flux)
-            '''
         else:
             # Compute the numerical flux
             numerical_flux = flux_average - self.DG_vars.nx*RDL_q_prod
 
-            '''
-            u_inside = q_inside[1]/q_inside[0]
-            u_outside = q_outside[1]/q_outside[0]
-
-            # Compute the velocity
-            A = 0.2026829916389991
-            C_inside = np.abs(u_inside) + 308/np.sqrt(A)
-            C_outside = np.abs(u_outside) + 308/np.sqrt(A)
-            C = np.maximum(np.abs(C_inside), np.abs(C_outside))
-
-            q_jump = self.DG_vars.nx * (q_inside - q_outside)
-            lax_numerical_flux = flux_average + C * 0.5 * (1 - 0) * q_jump
-            '''
         
         return numerical_flux
 

@@ -22,7 +22,7 @@ class PipeflowEquations(BaseModel):
         self.rho_ref = 52.67
         self.p_amb = 101325.
         self.p_ref = self.rho_ref*self.c**2#5016390.
-        self.e = 1e-8
+        self.e = 1e-2
         self.mu = 1.2e-5
         self.Cd = 5e-4
 
@@ -130,86 +130,28 @@ class PipeflowEquations(BaseModel):
         init = np.ones((self.DG_vars.num_states, x.shape[0]))
 
         init[0] = self.pressure_to_density(self.p_ref) * self.A
-        init[1] = init[0] * 4.0
+        init[1] = init[0] * 4.5
 
         return init
-    
-    def steady_state_boundary_conditions(self, t=0, q=None):
-        """Compute the boundary conditions."""
-
-        #rho_out = self.pressure_to_density(self.p_ref)
-        '''
-        q_left = q[:, 0]
-        q_right = q[:, -1]
-
-        #rho_A_right = self.pressure_to_density(self.p_ref) * self.A
-
-        p_right = self.density_to_pressure(q_right[0]/self.A)
-        u_left = q_left[1]/q_left[0]
-
-        BCs = np.zeros((self.DG_vars.num_states, 2))
-
-        # left rho boundary
-        BCs[0, 0] = 0.
-
-        # right rho boundary
-        BCs[0, 1] = q_right[0] - self.pressure_to_density(self.p_ref) * self.A
-
-        # left u boundary
-        BCs[1, 0] = q_left[1] - q_left[0] * 4.
-
-        # right u boundary
-        BCs[1, 1] = 0.
-
-        u = q[1]/q[0]
-        p = self.density_to_pressure(q[0]/self.A)
-        
-        BC_state_1 = {
-            'left': None,
-            'right': (p-self.p_ref)/self.step_size
-        }
-        BC_state_2 = {
-            'left': (u-4.5)/self.step_size,#4.0 + 0.5,#*np.sin(0.2*t)),
-            'right': None
-        }
-
-        BCs = [BC_state_1, BC_state_2]
-        '''
-        
-        
-        u = q[1]/q[0]
-        p = self.density_to_pressure(q[0]/self.A)
-        
-        BC_state_1 = {
-            'left': None,
-            'right': self.pressure_to_density(self.p_ref) * self.A
-        }
-        
-        BC_state_2 = {
-            'left': q[0, 0]*4.5,#4.0 + 0.5,#*np.sin(0.2*t)),
-            'right': None
-        }
-
-        BCs = [BC_state_1, BC_state_2]
-
-        return BCs
     
     def boundary_conditions(self, t, q=None):
         """Compute the boundary conditions."""
         
-        u = q[1]/q[0]
-        p = self.density_to_pressure(q[0]/self.A)
-
         BC_state_1 = {
             'left': None,
-            'right': self.pressure_to_density(self.p_ref)#(p-self.p_ref)/self.step_size
+            'right': self.pressure_to_density(self.p_ref) * self.A#(p-self.p_ref)/self.step_size
         }
         BC_state_2 = {
-            'left': q[0]*4.5,#(u-4.5)/self.step_size,#4.0 + 0.5,#*np.sin(0.2*t)),
+            'left': q[0, 0]*4.,#(u-4.5)/self.step_size,#4.0 + 0.5,#*np.sin(0.2*t)),
             'right': None
         }
 
         BCs = [BC_state_1, BC_state_2]
+
+        BCs = {
+            'state': BCs,
+            'flux': None,
+        }
         
         return BCs
     
@@ -251,10 +193,9 @@ class PipeflowEquations(BaseModel):
         p = self.density_to_pressure(rho)
 
         s[0] = - self.Cd * np.sqrt(rho * (p - self.p_amb)) * point_source
-        s[0] *= 0.
+        #s[0] *= 0.
         s[1] = -self.friction_factor(q)
 
-        #s = 0*s
 
         return s
 
@@ -265,9 +206,9 @@ if __name__ == '__main__':
     basic_args = {
         'xmin': 0,
         'xmax': 2000,
-        'num_elements': 100,
+        'num_elements': 250,
         'num_states': 2,
-        'polynomial_order': 2,
+        'polynomial_order': 4,
         'polynomial_type': 'legendre',
     }
 
@@ -275,13 +216,14 @@ if __name__ == '__main__':
         'newton_params':{
             'solver': 'direct',
             'max_newton_iter': 200,
-            'newton_tol': 1e-5
+            'newton_tol': 1e-5,
+            'num_jacobian_reuses': 1000,
         }
     }
 
     numerical_flux_args = {
-        'type': 'roe',
-        #'alpha': 0.0,
+        'type': 'lax_friedrichs',
+        'alpha': 0.5,
     }
     
     '''
@@ -298,18 +240,19 @@ if __name__ == '__main__':
 
     time_integrator_args = {
         'type': 'implicit_euler',
-        'step_size': 0.05,
+        'step_size': 0.1,
         'newton_params':{
-            'solver': 'krylov',
+            'solver': 'direct',
             'max_newton_iter': 200,
-            'newton_tol': 1e-5
+            'newton_tol': 1e-5,
+            'num_jacobian_reuses': 1000,
             }
         }
 
     BC_args = {
         'type': 'dirichlet',
         'treatment': 'naive',
-        'form': {'left': 'primitive', 'right': 'primitive'},
+        'state_or_flux': {'left': 'state', 'right': 'state'},
     }
 
     error = []
@@ -338,7 +281,7 @@ if __name__ == '__main__':
             t=0, 
             q_init=init, 
             t_final=t_final, 
-            steady_state_args=None#steady_state
+            steady_state_args=steady_state
         )
 
         x = np.linspace(0, 2000, 2000)
@@ -350,8 +293,20 @@ if __name__ == '__main__':
             u[:, t] = pipe_DG.evaluate_solution(x, sol_nodal=sol[1, :, t])
         rho = rho / pipe_DG.A
         u = u / rho / pipe_DG.A
+        
     
     t_vec = np.arange(0, u.shape[1])
+
+
+    num_steps_to_plot = 1000
+    if u.shape[-1] > num_steps_to_plot:
+
+        t_idx = np.linspace(0, u.shape[-1]-1, num_steps_to_plot, dtype=int)
+
+        u = u[:, t_idx]
+        rho = rho[:, t_idx]
+
+    t_vec = np.arange(0, u.shape[-1])
 
     plt.figure()
     plt.imshow(u, extent=[0, t_final, 2000, 0], aspect='auto')

@@ -20,6 +20,8 @@ class CharacteristicDirichletBoundaryConditions(BaseBoundaryConditions):
         source=None,
         transform_matrices=None,
         form='conservative',
+        primitive_to_conservative=None,
+        conservative_to_primitive=None,
         **args
         ):
         """Initialize the class."""
@@ -35,6 +37,8 @@ class CharacteristicDirichletBoundaryConditions(BaseBoundaryConditions):
         self.flux = flux
         self.transform_matrices = transform_matrices
         self.form = form
+        self.primitive_to_conservative = primitive_to_conservative
+        self.conservative_to_primitive = conservative_to_primitive
 
     
     def _get_primitive_state(self, t, conv_state):
@@ -42,11 +46,7 @@ class CharacteristicDirichletBoundaryConditions(BaseBoundaryConditions):
         prim_state = np.zeros(conv_state.shape)
 
         for i in range(prim_state.shape[1]):
-            P, P_inv, A, S, S_inv, Lambda = self.transform_matrices(
-                t=t, 
-                q=conv_state[:, i, 0]
-                )
-            prim_state[:, i, 0] = P_inv @ conv_state[:, i, 0]
+            prim_state[:, i, 0] = self.conservative_to_primitive(conv_state[:, i, 0])
         
         return prim_state
     
@@ -55,12 +55,7 @@ class CharacteristicDirichletBoundaryConditions(BaseBoundaryConditions):
         conv_state = np.zeros(prim_state.shape)
 
         for i in range(prim_state.shape[1]):
-            P, P_inv, A, S, S_inv, Lambda = self.transform_matrices(
-                t=t, 
-                q=prim_state[:, i, 0]
-                )
-            
-            conv_state[:, i, 0] = P @ prim_state[:, i, 0]
+            conv_state[:, i, 0] = self.primitive_to_conservative(prim_state[:, i, 0])
 
         return conv_state
     
@@ -86,11 +81,28 @@ class CharacteristicDirichletBoundaryConditions(BaseBoundaryConditions):
                 prim_state = prim_state[:, :, -1:]
             conv_state = self._get_conservative_state(t=t, prim_state=prim_state)
 
-        prim_state_diff = self.DG_vars.Dr @ prim_state[:, :, 0:1]
+        dx = self.DG_vars.dx
+        #prim_state_diff = self.DG_vars.Dr @ prim_state[:, :, 0:1]
 
-        conv_state = conv_state[:, 0, 0]
-        prim_state = prim_state[:, 0, 0]
-        prim_state_diff = prim_state_diff[:, 0, 0]
+        if side == 'left':
+
+            prim_state_diff = (prim_state[:, 1, 0] - prim_state[:, 0, 0])/dx
+
+            conv_state = conv_state[:, 0, 0]
+            prim_state = prim_state[:, 0, 0]
+
+            #prim_state_diff = prim_state_diff[:, 0, 0]
+
+
+        
+        elif side == 'right':
+            prim_state_diff = (prim_state[:, -2, 0] - prim_state[:, -1, 0])/dx
+
+            conv_state = conv_state[:, -1, 0]
+            prim_state = prim_state[:, -1, 0]
+
+
+
 
         return conv_state, prim_state, prim_state_diff
 
@@ -106,7 +118,7 @@ class CharacteristicDirichletBoundaryConditions(BaseBoundaryConditions):
             self.transform_matrices(t=t, q=q)
         
         # Check if the form is primitive or conservative
-        if self.form[side] == 'primitive': 
+        if True:#self.form[side] == 'primitive': 
             C = P_inv @ C
         elif self.form[side] == 'conservative':
             S = P @ S
@@ -119,8 +131,10 @@ class CharacteristicDirichletBoundaryConditions(BaseBoundaryConditions):
         ind_spec = np.zeros(self.DG_vars.num_states, dtype=bool)
 
         for i in range(self.DG_vars.num_states):
-            bc = self.boundary_conditions(t, q)[i][side]
-
+            bc = self.boundary_conditions(t, q)
+            bc = bc['state']
+            bc = bc[i][side]
+            
             if bc is None:
                 # Indices where BCs are to be derived
                 ind_der[i] = 1
@@ -137,7 +151,10 @@ class CharacteristicDirichletBoundaryConditions(BaseBoundaryConditions):
         indices = np.where(ind_spec)[0]
 
         for i, i_spec in enumerate(indices):
-            dWgivenLdt[i] = self.boundary_conditions(t, q)[i_spec][side]
+            bc = self.boundary_conditions(t, q)
+            bc = bc['state']
+            bc = bc[i_spec][side]
+            dWgivenLdt[i] = bc#self.boundary_conditions(t, q)[i_spec][side]
         
         return dWgivenLdt
 
@@ -157,6 +174,7 @@ class CharacteristicDirichletBoundaryConditions(BaseBoundaryConditions):
         RHS = np.zeros((self.DG_vars.num_states))
 
         RHS[ind_der] = -dw_dt[ind_der]
+
         RHS[ind_spec] = -dWgivenLdt
 
         #if self.form[side] == 'primitive':
@@ -201,6 +219,7 @@ class CharacteristicDirichletBoundaryConditions(BaseBoundaryConditions):
         ind_der, ind_spec = \
             self._get_derived_and_specified_indices(t=t, q=w_left, side='left')
 
+        w_left_diff[1] *= 1e6
         L = Lambda @ S_inv @ w_left_diff
 
         # Incoming wave for specified BCs
@@ -217,7 +236,6 @@ class CharacteristicDirichletBoundaryConditions(BaseBoundaryConditions):
             side='left', 
             ind_spec=ind_spec
         )
-
         RHS_left = self._compute_RHS(
             s=s,
             L=L, 
@@ -253,6 +271,7 @@ class CharacteristicDirichletBoundaryConditions(BaseBoundaryConditions):
         ind_der, ind_spec = \
             self._get_derived_and_specified_indices(t=t, q=w_right, side='right')
 
+        w_right_diff[1] *= 1e6
         L = Lambda @ S_inv @ w_right_diff
 
         # Incoming wave for specified BCs
@@ -283,6 +302,7 @@ class CharacteristicDirichletBoundaryConditions(BaseBoundaryConditions):
             P=P,
             side='right'
         )
+
         
         '''
         q_right = q[:, :, -1:]

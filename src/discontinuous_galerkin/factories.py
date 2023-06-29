@@ -2,6 +2,7 @@ from discontinuous_galerkin.numerical_fluxes.lax_friedrichs import LaxFriedrichs
 from discontinuous_galerkin.numerical_fluxes.roe import RoeFlux
 from discontinuous_galerkin.stabilizers.slope_limiters import GeneralizedSlopeLimiter
 from discontinuous_galerkin.stabilizers.filters import ExponentialFilter
+from discontinuous_galerkin.time_integrators.BDF2 import BDF2
 from discontinuous_galerkin.time_integrators.implicit_euler import ImplicitEuler
 from discontinuous_galerkin.time_integrators.SSPRK import SSPRK
 from discontinuous_galerkin.boundary_conditions.dirichlet_boundary_conditions import DirichletBoundaryConditions 
@@ -17,6 +18,9 @@ def get_boundary_conditions(
     system_jacobian=None,
     source=None,
     transform_matrices=None,
+    primitive_to_conservative=None,
+    conservative_to_primitive=None,
+    eigen=None,
     ):
     """Get the boundary conditions."""
     
@@ -29,6 +33,7 @@ def get_boundary_conditions(
             boundary_conditions=boundary_conditions, 
             flux=flux,
             numerical_flux=numerical_flux,
+            eigen=eigen,
             **BC_args
             )
     elif BC_args['treatment'] == 'characteristic':
@@ -43,6 +48,8 @@ def get_boundary_conditions(
             system_jacobian=system_jacobian,
             source=source,
             transform_matrices=transform_matrices,
+            primitive_to_conservative=primitive_to_conservative,
+            conservative_to_primitive=conservative_to_primitive,
             **BC_args
             )
     
@@ -52,6 +59,8 @@ def get_time_integrator(
     DG_vars, 
     time_integrator_args: dict=None,
     stabilizer=None,
+    primitive_to_conservative=None,
+    conservative_to_primitive=None,
     ):
     """Get instance of time integrator."""
 
@@ -61,6 +70,7 @@ def get_time_integrator(
     factory = {
         'implicit_euler': ImplicitEuler,
         'SSPRK': SSPRK,
+        'BDF2': BDF2,
     }
 
     time_integrator_type = time_integrator_args['type']
@@ -69,7 +79,11 @@ def get_time_integrator(
     
     time_integrator_args['stabilizer'] = stabilizer
 
-    time_integrator = factory[time_integrator_type](DG_vars, **time_integrator_args)
+    time_integrator = factory[time_integrator_type](
+        DG_vars, 
+        primitive_to_conservative=primitive_to_conservative, 
+        conservative_to_primitive=conservative_to_primitive,
+        **time_integrator_args)
 
     return time_integrator
 
@@ -107,6 +121,8 @@ def get_numerical_flux(
     system_jacobian=None,
     eigen=None,
     velocity=None,
+    primitive_to_conservative=None,
+    conservative_to_primitive=None,
     ):
     """Get instance of numerical flux."""
 
@@ -134,6 +150,8 @@ def get_numerical_flux(
             DG_vars, 
             system_jacobian=system_jacobian,
             eigen=eigen,
+            primitive_to_conservative=primitive_to_conservative,
+            conservative_to_primitive=conservative_to_primitive,
             **numerical_flux_args
             )
     else:
