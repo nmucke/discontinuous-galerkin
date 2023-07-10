@@ -1,6 +1,7 @@
 import time
 import numpy as np
 from discontinuous_galerkin.base.base_model import BaseModel
+from discontinuous_galerkin.polynomials.jacobi_polynomials import JacobiP
 from discontinuous_galerkin.start_up_routines.start_up_1D import StartUp1D
 import matplotlib.pyplot as plt
 import pdb
@@ -29,7 +30,7 @@ class PipeflowEquations(BaseModel):
         self.e = 1e-8#1e-8 # meters
         self.mu_g = 1.8e-5 # Pa*s
         self.mu_l = 1.516e-3 # Pa*s
-        self.Cd = 5e-4
+        #self.Cd = 5e-4
         self.T_norm = 278 # Kelvin
         self.T = 278 # Kelvin
 
@@ -37,14 +38,28 @@ class PipeflowEquations(BaseModel):
 
         self.leak = True
 
-        self.D_orifice = 0.05
+
+        self.D_orifice = 0.01
         self.A_orifice = np.pi*(self.D_orifice/2)**2
-        self.leak_location = 3500
-        self.Cd = .01
+        self.leak_location = 3721.31
+        self.Cd = .5
         self.Cv = self.A/np.sqrt(self.rho_g_norm/2 * ((self.A/(self.A_orifice*self.Cd))**2-1))
+        print(f'Cv: {self.Cv:.2E}')
 
         self.conservative_or_primitive = 'primitive'
-        
+
+        self.added_boundary_noise = 0.0
+        self._t = 0.0
+
+        self.xElementL = np.int32(self.leak_location / self.basic_args['xmax'] * self.DG_vars.K)
+
+        self.lagrange = []
+        l = np.zeros(self.DG_vars.N + 1)
+        rl = 2 * (self.leak_location - self.DG_vars.VX[self.xElementL]) / self.DG_vars.deltax - 1
+        for i in range(0, self.DG_vars.N + 1):
+            l[i] = JacobiP(np.array([rl]), 0, 0, i)
+        self.lagrange = np.linalg.solve(np.transpose(self.DG_vars.V), l)    
+
 
     def density_to_pressure(self, rho):
         """Compute the pressure from the density."""
@@ -372,9 +387,12 @@ class PipeflowEquations(BaseModel):
 
     def boundary_conditions(self, t=0, q=None):
         """Compute the boundary conditions."""
+
+        inflow_noise = self.inflow_boundary_noise[len(self.t_vec)]*5
+        outflow_noise = self.outflow_boundary_noise[len(self.t_vec)]/500
         
-        t_start = 500000.
-        t_end = 1500000000.
+        t_start = 10000000.
+        t_end = 200000000.
 
         # a increases linearly from 0.2 to 0.4 over 10 seconds
         if t < t_end and t > t_start:
@@ -383,9 +401,9 @@ class PipeflowEquations(BaseModel):
         elif t > t_end:
             gas_mass_inflow = 0.4
         else:
-            gas_mass_inflow = 0.2# + 0.02 * np.cos(2*np.pi*t/10)
+            gas_mass_inflow = 0.2 #+ self.added_boundary_noise# * np.sin(2*np.pi*t/50)
 
-        liquid_mass_inflow = 20.0
+        liquid_mass_inflow = 20.0 + inflow_noise
 
         if len(q.shape) == 1:
             rho_g = self.pressure_to_density(q[1]*self.p_outlet)
@@ -411,7 +429,7 @@ class PipeflowEquations(BaseModel):
             }
             BC_state_2 = {
                 'left': None,
-                'right': 1.#self.p_outlet,
+                'right': 1. + outflow_noise#self.p_outlet,
             }
             BC_state_3 = {
                 'left': u_m,#,
@@ -508,6 +526,20 @@ class PipeflowEquations(BaseModel):
         flux[2] = rho_m * u_m**2 * self.A + p * self.A
         
         return flux
+
+    def leakage(self, pressure=0, rho_m=0):
+        """Compute leakage"""
+
+        f_l = np.zeros((self.DG_vars.x.shape))
+
+        pressureL = self.evaluate_solution(np.array([self.leak_location]), pressure)[0]
+        rhoL = self.evaluate_solution(np.array([self.leak_location]), rho_m)[0]
+
+        discharge_sqrt_coef = (pressureL - self.p_amb) * rhoL
+        f_l[:, self.xElementL] = self.Cv * np.sqrt(discharge_sqrt_coef) * self.lagrange
+        f_l[:, self.xElementL] = self.DG_vars.invMk @ f_l[:, self.xElementL]
+
+        return f_l
     
     def source(self, t, q):
         """Compute the source."""
@@ -526,18 +558,22 @@ class PipeflowEquations(BaseModel):
 
         
         point_source = np.zeros((self.DG_vars.Np*self.DG_vars.K))
-        if t>0:
+        if t>0.:
+            '''
             x = pipe_DG.DG_vars.x.flatten('F')
-            width = 100
+            width = 50
             point_source = \
                 (np.heaviside(x-self.leak_location + width/2, 1) - np.heaviside(x-self.leak_location-width/2, 1))
             point_source *= 1/width
 
             leak_mass = self.Cv * np.sqrt(rho_m * (p - self.p_amb)) * point_source
-
             s[0] = -alpha_g * leak_mass
             s[1] = -alpha_l * leak_mass
-            
+            '''
+            leak = self.leakage(pressure=p, rho_m=rho_m).flatten('F')
+            s[0] = -alpha_g * leak
+            s[1] = -alpha_l * leak
+
         s[-1] = -self.friction_factor(q)
 
         return s
@@ -548,14 +584,14 @@ if __name__ == '__main__':
     basic_args = {
         'xmin': 0,
         'xmax': 10000,
-        'num_elements': 750,
+        'num_elements': 1000,
         'num_states': 3,
         'polynomial_order': 2,
         'polynomial_type': 'legendre',
     }
 
     steady_state_args = {
-        'newton_params':{
+        'newton_params': {
             'solver': 'direct',
             'max_newton_iter': 200,
             'newton_tol': 1e-8,
@@ -567,7 +603,12 @@ if __name__ == '__main__':
         'type': 'lax_friedrichs',
         'alpha': 0.5,
     }
-    
+    '''
+    stabilizer_args = {
+        'type': 'artificial_viscosity',
+        'kappa': 15.,
+    }
+    '''
     stabilizer_args = {
         'type': 'slope_limiter',
         'second_derivative_upper_bound': 1e-8,
@@ -581,10 +622,10 @@ if __name__ == '__main__':
     '''
     time_integrator_args = {
         'type': 'BDF2',
-        'step_size': .001,
+        'step_size': .05,
         'newton_params': {
             'solver': 'direct',
-            'max_newton_iter': 200,
+            'max_newton_iter': 100,
             'newton_tol': 1e-8,
             'num_jacobian_reuses': 1000,
         }
@@ -606,7 +647,7 @@ if __name__ == '__main__':
             
     init = pipe_DG.initial_condition(pipe_DG.DG_vars.x.flatten('F'))
 
-    t_final = 10.0
+    t_final = 2000.0
     sol, t_vec = pipe_DG.solve(
         t=0, 
         q_init=init, 
@@ -614,7 +655,7 @@ if __name__ == '__main__':
         steady_state_args=steady_state_args
     )
 
-    x = np.linspace(0, basic_args['xmax'], 2000)
+    x = np.linspace(0, basic_args['xmax'], 512)
 
     A_l = np.zeros((len(x), len(t_vec)))
     p = np.zeros((len(x), len(t_vec)))
@@ -633,7 +674,7 @@ if __name__ == '__main__':
     rho_g = pipe_DG.pressure_to_density(p*pipe_DG.p_outlet)
     rho_g_A_g_u_m = u_m * rho_g * (pipe_DG.A - A_l)
     rho_l_A_l_u_m = u_m * pipe_DG.rho_l * A_l
-    print(rho_g_A_g_u_m[0, :])
+    #print(rho_g_A_g_u_m[0, :])
 
     
     t_vec = np.arange(0, u.shape[1]-1)
@@ -666,25 +707,23 @@ if __name__ == '__main__':
 
     t_vec = np.arange(0, alpha_l.shape[-1])
 
+
+ 
+
     fig, ax = plt.subplots()
-    xdata, ydata, ydata_1 = [], [], []
+    xdata, ydata = [], []
     ln, = ax.plot([], [], lw=3, animated=True)
-    ln_1, = ax.plot([], [], lw=3, animated=True)
 
     def init():
         ax.set_xlim(0, basic_args['xmax'])
         ax.set_ylim(u.min(), u.max())
-        #ax.set_ylim(0.1, 0.9)
-        #ax.set_ylim(18, 35)
         return ln,
 
     def update(frame):
         xdata.append(x)
         ydata.append(u[:, frame])
-        #ydata_1.append(alpha_g[:, frame])
         ln.set_data(x, u[:, frame])
-        #ln_1.set_data(x, alpha_g[:, frame])
-        return ln, #ln_1,
+        return ln, 
 
     ani = FuncAnimation(
         fig,
@@ -697,6 +736,7 @@ if __name__ == '__main__':
     ani.save('pipeflow_velocity.gif', fps=30)
     plt.show()
 
+    '''
     fig, ax = plt.subplots()
     xdata, ydata, ydata_1 = [], [], []
     ln, = ax.plot([], [], lw=3, animated=True)
@@ -727,9 +767,8 @@ if __name__ == '__main__':
         )
     ani.save('pipeflow_pressure.gif', fps=30)
     plt.show()
+    '''
 
-
-    t_vec = np.arange(0, alpha_l.shape[-1])
 
     fig, ax = plt.subplots()
     xdata, ydata, ydata_1 = [], [], []

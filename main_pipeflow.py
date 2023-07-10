@@ -1,6 +1,7 @@
 import time
 import numpy as np
 from discontinuous_galerkin.base.base_model import BaseModel
+from discontinuous_galerkin.polynomials.jacobi_polynomials import JacobiP
 from discontinuous_galerkin.start_up_routines.start_up_1D import StartUp1D
 import matplotlib.pyplot as plt
 import pdb
@@ -25,6 +26,19 @@ class PipeflowEquations(BaseModel):
         self.e = 1e-2
         self.mu = 1.2e-5
         self.Cd = 5e-4
+
+        self.leak_location = 500
+
+        self.xElementL = np.int32(self.leak_location / self.basic_args['xmax'] * self.DG_vars.K)
+
+
+
+        self.lagrange = []
+        l = np.zeros(self.DG_vars.N + 1)
+        rl = 2 * (self.leak_location - self.DG_vars.VX[self.xElementL]) / self.DG_vars.deltax - 1
+        for i in range(0, self.DG_vars.N + 1):
+            l[i] = JacobiP(np.array([rl]), 0, 0, i)
+        self.lagrange = np.linalg.solve(np.transpose(self.DG_vars.V), l)    
 
     def density_to_pressure(self, rho):
         """Compute the pressure from the density."""
@@ -176,23 +190,39 @@ class PipeflowEquations(BaseModel):
 
         return flux
     
+    def leakage(self, pressure=0, rho_m=0):
+        """Compute leakage"""
+
+        f_l = np.zeros((self.DG_vars.x.shape))
+
+        pressureL = self.evaluate_solution(np.array([self.leak_location]), pressure)[0]
+        rhoL = self.evaluate_solution(np.array([self.leak_location]), rho_m)[0]
+
+        discharge_sqrt_coef = (pressureL - self.p_amb) * rhoL
+        f_l[:, self.xElementL] = self.Cd * np.sqrt(discharge_sqrt_coef) * self.lagrange
+        f_l[:, self.xElementL] = self.DG_vars.invMk @ f_l[:, self.xElementL]
+
+        return f_l
+    
     def source(self, t, q):
         """Compute the source."""
 
         s = np.zeros((self.DG_vars.num_states,self.DG_vars.Np*self.DG_vars.K))
+        rho = q[0]/self.A
+        p = self.density_to_pressure(rho)
 
         point_source = np.zeros((self.DG_vars.Np*self.DG_vars.K))
         if t>0:
+            '''
             x = pipe_DG.DG_vars.x.flatten('F')
             width = 50
             point_source = \
                 (np.heaviside(x-500 + width/2, 1) - np.heaviside(x-500-width/2, 1))
             point_source *= 1/width
+            '''
+            leak = self.leakage(pressure=p, rho_m=rho).flatten('F')
 
-        rho = q[0]/self.A
-        p = self.density_to_pressure(rho)
-
-        s[0] = - self.Cd * np.sqrt(rho * (p - self.p_amb)) * point_source
+            s[0] = -leak
         #s[0] *= 0.
         s[1] = -self.friction_factor(q)
 
@@ -206,9 +236,9 @@ if __name__ == '__main__':
     basic_args = {
         'xmin': 0,
         'xmax': 2000,
-        'num_elements': 250,
+        'num_elements': 200,
         'num_states': 2,
-        'polynomial_order': 4,
+        'polynomial_order': 8,
         'polynomial_type': 'legendre',
     }
 
@@ -228,6 +258,11 @@ if __name__ == '__main__':
     
     '''
     stabilizer_args = {
+        'type': 'artificial_viscosity',
+        'kappa': 5.,
+    }
+    '''
+    stabilizer_args = {
         'type': 'slope_limiter',
         'second_derivative_upper_bound': 1e-8,
     }
@@ -237,15 +272,16 @@ if __name__ == '__main__':
         'num_modes_to_filter': 20,
         'filter_order': 6,
     }
+    '''
 
     time_integrator_args = {
-        'type': 'implicit_euler',
-        'step_size': 0.1,
+        'type': 'BDF2',
+        'step_size': 0.25,
         'newton_params':{
             'solver': 'direct',
             'max_newton_iter': 200,
             'newton_tol': 1e-5,
-            'num_jacobian_reuses': 1000,
+            'num_jacobian_reuses': 2500,
             }
         }
 
@@ -276,7 +312,7 @@ if __name__ == '__main__':
 
         init = pipe_DG.initial_condition(pipe_DG.DG_vars.x.flatten('F'))
 
-        t_final = 20.0
+        t_final = 150.0
         sol, t_vec = pipe_DG.solve(
             t=0, 
             q_init=init, 

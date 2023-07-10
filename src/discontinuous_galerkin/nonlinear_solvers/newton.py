@@ -95,7 +95,6 @@ class NewtonSolver(object):
                 self.jacobian_reuse_counter += 1
             else:
                 self.jacobian = self._compute_jacobian(func, q)
-                #self.jac_lu, self.jac_piv = lu_factor(self.jacobian)
                 self.jacobian = csc_matrix(self.jacobian)
                 self.jac_lu = splu(csc_matrix(self.jacobian))
                 self.jacobian_reuse_counter = 0
@@ -104,23 +103,32 @@ class NewtonSolver(object):
                 # Compute the residual
                 residual = -self._compute_residual(func, q)
 
-                #q = np.reshape(q, (2, 3*200), order='F')
-                #residual = np.reshape(residual, (2, 3*200), order='F')
-                
+                if np.max(np.abs(residual)) < self.newton_tol:
+                    return q
+
                 # Compute the update
-                #delta_q = np.linalg.solve(self.jacobian, residual)
-                #delta_q = lu_solve((self.jac_lu, self.jac_piv), residual)
+                delta_q = self.jac_lu.solve(residual)
+                
+                # Update the solution
+                q = q + delta_q
+            
+            self.jacobian = self._compute_jacobian(func, q)
+            self.jacobian = csc_matrix(self.jacobian)
+            self.jac_lu = splu(csc_matrix(self.jacobian))
+            self.jacobian_reuse_counter = 0
+
+            for _ in range(self.max_newton_iter):
+                # Compute the residual
+                residual = -self._compute_residual(func, q)
+
+                if np.max(np.abs(residual)) < self.newton_tol:
+                    return q
+                
                 delta_q = self.jac_lu.solve(residual)
                 
                 # Update the solution
                 q = q + delta_q
 
-                # Check for convergence
-                #if np.max(np.abs(delta_q)) < self.newton_tol:
-                #   return q
-                if np.max(np.abs(residual)) < self.newton_tol:
-                    return q
-            
             raise Exception('Newton solver did not converge.')
         
         def _solve_krylov(self, func, q):
