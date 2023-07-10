@@ -10,7 +10,69 @@ from discontinuous_galerkin.start_up_routines.start_up_1D import StartUp1D
 import discontinuous_galerkin.factories as factories
 from discontinuous_galerkin.time_integrators.CFL import get_CFL_step_size
 from discontinuous_galerkin.steady_state import compute_steady_state 
-
+class Brownian():
+    """
+    A Brownian motion class constructor
+    """
+    def __init__(self,x0=0):
+        """
+        Init class
+        """
+        assert (type(x0)==float or type(x0)==int or x0 is None), "Expect a float or None for the initial value"
+        
+        self.x0 = float(x0)
+    
+    def gen_random_walk(self,n_step=100):
+        """
+        Generate motion by random walk
+        
+        Arguments:
+            n_step: Number of steps
+            
+        Returns:
+            A NumPy array with `n_steps` points
+        """
+        # Warning about the small number of steps
+        if n_step < 30:
+            print("WARNING! The number of steps is small. It may not generate a good stochastic process sequence!")
+        
+        w = np.ones(n_step)*self.x0
+        
+        for i in range(1,n_step):
+            # Sampling from the Normal distribution with probability 1/2
+            yi = np.random.choice([1,-1])
+            # Weiner process
+            w[i] = w[i-1]+(yi/np.sqrt(n_step))
+        
+        return w
+    
+    def gen_normal(self,n_step=100):
+        """
+        Generate motion by drawing from the Normal distribution
+        
+        Arguments:
+            n_step: Number of steps
+            
+        Returns:
+            A NumPy array with `n_steps` points
+        """
+        if n_step < 30:
+            print("WARNING! The number of steps is small. It may not generate a good stochastic process sequence!")
+        
+        w = np.ones(n_step)*self.x0
+        
+        for i in range(1,n_step):
+            # Sampling from the Normal distribution
+            yi = np.random.normal()
+            # Weiner process
+            w[i] = w[i-1]+(yi/np.sqrt(n_step))
+        
+        return w
+    
+def moving_average(a, n=3) :
+    ret = np.cumsum(a, dtype=float)
+    ret[n:] = ret[n:] - ret[:-n]
+    return ret[n - 1:] / n
 
 #class BaseModel(StartUp1D, Stabilizer, NumericalFlux):
 
@@ -216,11 +278,71 @@ class BaseModel():
 
     def compute_rhs(self, t, q):
         """Compute the right hand side of the discretized model."""
-
+        
         # Compute the flux
         flux = self.flux(q)
 
-        #conv = np.array(self.primitive_to_conservative(q))
+        if self.stabilizer_args['type'] == 'artificial_viscosity':
+            
+            if self.primitive_to_conservative is not None:
+                q_cons = self.primitive_to_conservative(q)
+            else:
+                q_cons = q
+            epsilon_e = self.stabilizer.get_viscosity(q_cons)
+
+            q_cons = q_cons.reshape(
+                (self.DG_vars.num_states, self.DG_vars.Np, self.DG_vars.K), 
+                order='F'
+            )
+            epsilon_e = np.expand_dims(epsilon_e, axis=0)
+            epsilon_e = np.expand_dims(epsilon_e, axis=0)
+            epsilon_e = np.tile(epsilon_e, (self.DG_vars.num_states, self.DG_vars.Np, 1))
+
+            #epsilon_e = 1e2*np.ones((self.DG_vars.num_states, self.DG_vars.Np, self.DG_vars.K))
+            
+            viscosity_flux = q_cons
+
+            viscosity_flux = viscosity_flux.reshape(
+                (self.DG_vars.num_states, self.DG_vars.Np * self.DG_vars.K), 
+                order='F'
+            )
+            q_cons = q_cons.reshape(
+                (self.DG_vars.num_states, self.DG_vars.Np * self.DG_vars.K), 
+                order='F'
+            )
+
+            viscosity_numerical_flux = self.numerical_flux._average_operator(
+                viscosity_flux[:, self.DG_vars.vmapM],
+                viscosity_flux[:, self.DG_vars.vmapP],
+                )
+                        
+            d_viscosity_flux = self.DG_vars.nx * (viscosity_flux[:, self.DG_vars.vmapM] - viscosity_numerical_flux)
+
+            # Reshape the flux and source terms
+            d_viscosity_flux = d_viscosity_flux.reshape(
+                (self.DG_vars.num_states, self.DG_vars.Nfp * self.DG_vars.Nfaces, self.DG_vars.K), 
+                order='F'
+                )
+            viscosity_flux = viscosity_flux.reshape(
+                (self.DG_vars.num_states, self.DG_vars.Np, self.DG_vars.K), 
+                order='F'
+                )
+            
+            # Compute the right hand side
+            viscosity_term = \
+                + np.sqrt(epsilon_e) * np.multiply(self.DG_vars.rx, self.DG_vars.Dr @ viscosity_flux) \
+                - self.DG_vars.LIFT @ (np.multiply(self.DG_vars.Fscale, d_viscosity_flux))
+            
+            viscosity_term = viscosity_term.reshape(
+                (self.DG_vars.num_states, self.DG_vars.Np * self.DG_vars.K), 
+                order='F'
+                )
+            epsilon_e = epsilon_e.reshape(
+                (self.DG_vars.num_states, self.DG_vars.Np * self.DG_vars.K), 
+                order='F'
+                )
+                        
+            flux -= np.sqrt(epsilon_e) * viscosity_term
         
         # Compute the numerical flux
         numerical_flux = self.numerical_flux(
@@ -255,6 +377,7 @@ class BaseModel():
                     flux_boundary=flux_boundary,
                     step_size=self.step_size,
                     )
+        
         d_flux = self.DG_vars.nx * (flux[:, self.DG_vars.vmapM] - numerical_flux)
 
         # Reshape the flux and source terms
@@ -271,11 +394,13 @@ class BaseModel():
             order='F'
             )
         
+        
         # Compute the right hand side
         rhs = \
             - np.multiply(self.DG_vars.rx, self.DG_vars.Dr @ flux) \
             + self.DG_vars.LIFT @ (np.multiply(self.DG_vars.Fscale, d_flux)) \
             + source
+        
         
         if self.BC_args['treatment'] == 'characteristic' and not self.steady_state_solve:
         
@@ -309,7 +434,21 @@ class BaseModel():
 
         This method solves the model and returns the solution.
         """
+
+        self.t_final = t_final
+
+
+        brownian = Brownian()
+
+        window_size = 600
+        self.inflow_boundary_noise = brownian.gen_normal(n_step=np.int64(self.t_final/self.step_size + window_size + 1))
+        self.inflow_boundary_noise = moving_average(self.inflow_boundary_noise, n=window_size)
+
+        self.outflow_boundary_noise = brownian.gen_normal(n_step=np.int64(self.t_final/self.step_size + window_size + 1))
+        self.outflow_boundary_noise = moving_average(self.outflow_boundary_noise, n=window_size)
+
         sol = []
+        self.t_vec = []
 
         self.steady_state_solve = False
         # Compute the steady state solution
@@ -329,7 +468,7 @@ class BaseModel():
         # Set initial condition
         sol.append(q_init)
 
-        t_vec = [t]
+        self.t_vec.append(t)
 
         if print_progress:
             pbar = tqdm(
@@ -350,27 +489,27 @@ class BaseModel():
             if self.time_integrator_args['type'] == 'BDF2':
                 if len(sol) < 2:
                     sol_, t = self.init_time_integrator(
-                    t=t_vec[-1], 
+                    t=self.t_vec[-1], 
                     q=sol[-1],
                     step_size=self.step_size,
                     rhs=self.compute_rhs
                     )
                 else:
                     sol_, t = self.time_integrator(
-                        t=t_vec[-1], 
+                        t=self.t_vec[-1], 
                         q=sol[-2:],
                         step_size=self.step_size,
                         rhs=self.compute_rhs
                         )
             else:
                 sol_, t = self.time_integrator(
-                    t=t_vec[-1], 
+                    t=self.t_vec[-1], 
                     q=sol[-1],
                     step_size=self.step_size,
                     rhs=self.compute_rhs
                     )
             
-            t_vec.append(t)
+            self.t_vec.append(t)
 
             sol.append(sol_)
 
@@ -381,7 +520,7 @@ class BaseModel():
         if print_progress:        
             pbar.close()
         
-        return np.stack(sol, axis=-1) , t_vec
+        return np.stack(sol, axis=-1) , self.t_vec
         
 
     def evaluate_solution(self, x, sol_nodal):
@@ -414,7 +553,7 @@ class BaseModel():
         if x[-1] == self.DG_vars.xmax:
             sol_xVec[-1] = sol_nodal[-1, -1]
             
-        i_interface = np.where(x == self.DG_vars.VX)
-        sol_xVec[i_interface] = 0.5*(sol_nodal[i_interface[0]-1,-1]+sol_nodal[i_interface[0],0])
+        #i_interface = np.where(x == self.DG_vars.VX)[0]
+        #sol_xVec[i_interface] = 0.5*(sol_nodal[-1, i_interface[0]-1]+sol_nodal[0, i_interface[0]])
 
         return sol_xVec

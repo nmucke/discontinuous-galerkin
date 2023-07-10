@@ -31,7 +31,10 @@ class BDF2(BaseTimeIntegrator):
 
         self.newton_solver = NewtonSolver(**newton_params)
 
-        self.primitive_to_conservative = lambda q: np.array(primitive_to_conservative(q))
+        if primitive_to_conservative is not None:
+            self.primitive_to_conservative = lambda q: np.array(primitive_to_conservative(q))
+        else:
+            self.primitive_to_conservative = None
 
     def _BDF2_rhs(self, q, t_new, q_old_1, q_old_2, rhs, step_size):
         """Compute the RHS of the implicit Euler equation."""

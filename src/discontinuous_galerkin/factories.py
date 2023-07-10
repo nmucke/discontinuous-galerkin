@@ -1,5 +1,6 @@
 from discontinuous_galerkin.numerical_fluxes.lax_friedrichs import LaxFriedrichsFlux 
 from discontinuous_galerkin.numerical_fluxes.roe import RoeFlux
+from discontinuous_galerkin.stabilizers.artificial_viscosity import ArtificialViscosity
 from discontinuous_galerkin.stabilizers.slope_limiters import GeneralizedSlopeLimiter
 from discontinuous_galerkin.stabilizers.filters import ExponentialFilter
 from discontinuous_galerkin.time_integrators.BDF2 import BDF2
@@ -100,6 +101,7 @@ def get_stabilizer(
     factory = {
         'slope_limiter': GeneralizedSlopeLimiter,
         'filter': ExponentialFilter,
+        'artificial_viscosity': ArtificialViscosity,
     }
 
     if stabilizer_args['type'] is None:
