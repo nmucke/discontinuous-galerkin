@@ -25,7 +25,7 @@ class PipeflowEquations(BaseModel):
         self.p_ref = self.rho_ref*self.c**2#5016390.
         self.e = 1e-2
         self.mu = 1.2e-5
-        self.Cd = 5e-4
+        self.Cd = .1
 
         self.leak_location = 500
 
@@ -39,6 +39,14 @@ class PipeflowEquations(BaseModel):
         for i in range(0, self.DG_vars.N + 1):
             l[i] = JacobiP(np.array([rl]), 0, 0, i)
         self.lagrange = np.linalg.solve(np.transpose(self.DG_vars.V), l)    
+
+
+        self.D_orifice = 0.03
+        self.A_orifice = np.pi*(self.D_orifice/2)**2
+
+        self.Cv = self.A/np.sqrt(self.rho_ref/2 * ((self.A/(self.A_orifice*self.Cd))**2-1))
+
+        print('Cv = ', self.Cv)
 
     def density_to_pressure(self, rho):
         """Compute the pressure from the density."""
@@ -199,7 +207,7 @@ class PipeflowEquations(BaseModel):
         rhoL = self.evaluate_solution(np.array([self.leak_location]), rho_m)[0]
 
         discharge_sqrt_coef = (pressureL - self.p_amb) * rhoL
-        f_l[:, self.xElementL] = self.Cd * np.sqrt(discharge_sqrt_coef) * self.lagrange
+        f_l[:, self.xElementL] = self.Cv * np.sqrt(discharge_sqrt_coef) * self.lagrange
         f_l[:, self.xElementL] = self.DG_vars.invMk @ f_l[:, self.xElementL]
 
         return f_l
@@ -238,7 +246,7 @@ if __name__ == '__main__':
         'xmax': 2000,
         'num_elements': 200,
         'num_states': 2,
-        'polynomial_order': 8,
+        'polynomial_order': 4,
         'polynomial_type': 'legendre',
     }
 
@@ -276,7 +284,7 @@ if __name__ == '__main__':
 
     time_integrator_args = {
         'type': 'BDF2',
-        'step_size': 0.25,
+        'step_size': 0.01,
         'newton_params':{
             'solver': 'direct',
             'max_newton_iter': 200,
@@ -291,58 +299,45 @@ if __name__ == '__main__':
         'state_or_flux': {'left': 'state', 'right': 'state'},
     }
 
-    error = []
-    conv_list = [2]
-    num_DOFs = []
-    for polynomial_order in conv_list:
+    pipe_DG = PipeflowEquations(
+        basic_args=basic_args,
+        BC_args=BC_args,
+        stabilizer_args=stabilizer_args,
+        time_integrator_args=time_integrator_args,
+        numerical_flux_args=numerical_flux_args,
+    )
 
-        #polynomial_order=8
-        num_elements = 150
+    init = pipe_DG.initial_condition(pipe_DG.DG_vars.x.flatten('F'))
 
-        num_DOFs.append((polynomial_order+1)*num_elements)
+    t_final = 500.0
+    sol, t_vec = pipe_DG.solve(
+        t=0, 
+        q_init=init, 
+        t_final=t_final, 
+        steady_state_args=steady_state
+    )
 
-        pipe_DG = PipeflowEquations(
-            basic_args=basic_args,
-            BC_args=BC_args,
-            stabilizer_args=stabilizer_args,
-            time_integrator_args=time_integrator_args,
-            numerical_flux_args=numerical_flux_args,
-        )
+    x = np.linspace(0, 2000, 256)
 
 
-        init = pipe_DG.initial_condition(pipe_DG.DG_vars.x.flatten('F'))
+    num_steps_to_plot = 3000
+    if sol.shape[-1] > num_steps_to_plot:
 
-        t_final = 150.0
-        sol, t_vec = pipe_DG.solve(
-            t=0, 
-            q_init=init, 
-            t_final=t_final, 
-            steady_state_args=steady_state
-        )
+        t_idx = np.linspace(0, sol.shape[-1]-1, num_steps_to_plot, dtype=int)
 
-        x = np.linspace(0, 2000, 2000)
+        sol = sol[:, :, t_idx]
 
-        u = np.zeros((len(x), len(t_vec)))
-        rho = np.zeros((len(x), len(t_vec)))
-        for t in range(sol.shape[-1]):
-            rho[:, t] = pipe_DG.evaluate_solution(x, sol_nodal=sol[0, :, t])
-            u[:, t] = pipe_DG.evaluate_solution(x, sol_nodal=sol[1, :, t])
-        rho = rho / pipe_DG.A
-        u = u / rho / pipe_DG.A
+    t_vec = np.arange(0, sol.shape[-1])
+    u = np.zeros((len(x), len(t_vec)))
+    rho = np.zeros((len(x), len(t_vec)))
+    for t in range(sol.shape[-1]):
+        rho[:, t] = pipe_DG.evaluate_solution(x, sol_nodal=sol[0, :, t])
+        u[:, t] = pipe_DG.evaluate_solution(x, sol_nodal=sol[1, :, t])
+    rho = rho / pipe_DG.A
+    u = u / rho / pipe_DG.A
         
     
-    t_vec = np.arange(0, u.shape[1])
 
-
-    num_steps_to_plot = 1000
-    if u.shape[-1] > num_steps_to_plot:
-
-        t_idx = np.linspace(0, u.shape[-1]-1, num_steps_to_plot, dtype=int)
-
-        u = u[:, t_idx]
-        rho = rho[:, t_idx]
-
-    t_vec = np.arange(0, u.shape[-1])
 
     plt.figure()
     plt.imshow(u, extent=[0, t_final, 2000, 0], aspect='auto')

@@ -10,69 +10,6 @@ from discontinuous_galerkin.start_up_routines.start_up_1D import StartUp1D
 import discontinuous_galerkin.factories as factories
 from discontinuous_galerkin.time_integrators.CFL import get_CFL_step_size
 from discontinuous_galerkin.steady_state import compute_steady_state 
-class Brownian():
-    """
-    A Brownian motion class constructor
-    """
-    def __init__(self,x0=0):
-        """
-        Init class
-        """
-        assert (type(x0)==float or type(x0)==int or x0 is None), "Expect a float or None for the initial value"
-        
-        self.x0 = float(x0)
-    
-    def gen_random_walk(self,n_step=100):
-        """
-        Generate motion by random walk
-        
-        Arguments:
-            n_step: Number of steps
-            
-        Returns:
-            A NumPy array with `n_steps` points
-        """
-        # Warning about the small number of steps
-        if n_step < 30:
-            print("WARNING! The number of steps is small. It may not generate a good stochastic process sequence!")
-        
-        w = np.ones(n_step)*self.x0
-        
-        for i in range(1,n_step):
-            # Sampling from the Normal distribution with probability 1/2
-            yi = np.random.choice([1,-1])
-            # Weiner process
-            w[i] = w[i-1]+(yi/np.sqrt(n_step))
-        
-        return w
-    
-    def gen_normal(self,n_step=100):
-        """
-        Generate motion by drawing from the Normal distribution
-        
-        Arguments:
-            n_step: Number of steps
-            
-        Returns:
-            A NumPy array with `n_steps` points
-        """
-        if n_step < 30:
-            print("WARNING! The number of steps is small. It may not generate a good stochastic process sequence!")
-        
-        w = np.ones(n_step)*self.x0
-        
-        for i in range(1,n_step):
-            # Sampling from the Normal distribution
-            yi = np.random.normal()
-            # Weiner process
-            w[i] = w[i-1]+(yi/np.sqrt(n_step))
-        
-        return w
-    
-def moving_average(a, n=3) :
-    ret = np.cumsum(a, dtype=float)
-    ret[n:] = ret[n:] - ret[:-n]
-    return ret[n - 1:] / n
 
 #class BaseModel(StartUp1D, Stabilizer, NumericalFlux):
 
@@ -275,6 +212,11 @@ class BaseModel():
         """Compute the wave speed."""
 
         raise NotImplementedError
+    
+
+    @abstractmethod
+    def start_solver(self,):
+        pass
 
     def compute_rhs(self, t, q):
         """Compute the right hand side of the discretized model."""
@@ -437,18 +379,10 @@ class BaseModel():
 
         self.t_final = t_final
 
-
-        brownian = Brownian()
-
-        window_size = 600
-        self.inflow_boundary_noise = brownian.gen_normal(n_step=np.int64(self.t_final/self.step_size + window_size + 1))
-        self.inflow_boundary_noise = moving_average(self.inflow_boundary_noise, n=window_size)
-
-        self.outflow_boundary_noise = brownian.gen_normal(n_step=np.int64(self.t_final/self.step_size + window_size + 1))
-        self.outflow_boundary_noise = moving_average(self.outflow_boundary_noise, n=window_size)
-
         sol = []
         self.t_vec = []
+
+        self.start_solver()
 
         self.steady_state_solve = False
         # Compute the steady state solution

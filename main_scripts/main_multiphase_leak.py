@@ -10,6 +10,69 @@ from scipy.optimize import fsolve, least_squares
 from matplotlib.animation import FuncAnimation
 
 from scipy.linalg import eig
+class Brownian():
+    """
+    A Brownian motion class constructor
+    """
+    def __init__(self,x0=0):
+        """
+        Init class
+        """
+        assert (type(x0)==float or type(x0)==int or x0 is None), "Expect a float or None for the initial value"
+        
+        self.x0 = float(x0)
+    
+    def gen_random_walk(self,n_step=100):
+        """
+        Generate motion by random walk
+        
+        Arguments:
+            n_step: Number of steps
+            
+        Returns:
+            A NumPy array with `n_steps` points
+        """
+        # Warning about the small number of steps
+        if n_step < 30:
+            print("WARNING! The number of steps is small. It may not generate a good stochastic process sequence!")
+        
+        w = np.ones(n_step)*self.x0
+        
+        for i in range(1,n_step):
+            # Sampling from the Normal distribution with probability 1/2
+            yi = np.random.choice([1,-1])
+            # Weiner process
+            w[i] = w[i-1]+(yi/np.sqrt(n_step))
+        
+        return w
+    
+    def gen_normal(self,n_step=100):
+        """
+        Generate motion by drawing from the Normal distribution
+        
+        Arguments:
+            n_step: Number of steps
+            
+        Returns:
+            A NumPy array with `n_steps` points
+        """
+        if n_step < 30:
+            print("WARNING! The number of steps is small. It may not generate a good stochastic process sequence!")
+        
+        w = np.ones(n_step)*self.x0
+        
+        for i in range(1,n_step):
+            # Sampling from the Normal distribution
+            yi = np.random.normal()
+            # Weiner process
+            w[i] = w[i-1]+(yi/np.sqrt(n_step))
+        
+        return w
+    
+def moving_average(a, n=3) :
+    ret = np.cumsum(a, dtype=float)
+    ret[n:] = ret[n:] - ret[:-n]
+    return ret[n - 1:] / n
 
 
 class PipeflowEquations(BaseModel):
@@ -27,7 +90,7 @@ class PipeflowEquations(BaseModel):
         self.p_amb = 1.01325e5 # Pa
         self.p_norm = 1.0e5 # Pa
         self.p_outlet = 1.0e6 # Pa
-        self.e = 1e-8#1e-8 # meters
+        self.e = 1e-2#1e-8 # meters
         self.mu_g = 1.8e-5 # Pa*s
         self.mu_l = 1.516e-3 # Pa*s
         #self.Cd = 5e-4
@@ -41,8 +104,8 @@ class PipeflowEquations(BaseModel):
 
         self.D_orifice = 0.01
         self.A_orifice = np.pi*(self.D_orifice/2)**2
-        self.leak_location = 3721.31
-        self.Cd = .5
+        self.leak_location = 321.31
+        self.Cd = 1.
         self.Cv = self.A/np.sqrt(self.rho_g_norm/2 * ((self.A/(self.A_orifice*self.Cd))**2-1))
         print(f'Cv: {self.Cv:.2E}')
 
@@ -58,7 +121,9 @@ class PipeflowEquations(BaseModel):
         rl = 2 * (self.leak_location - self.DG_vars.VX[self.xElementL]) / self.DG_vars.deltax - 1
         for i in range(0, self.DG_vars.N + 1):
             l[i] = JacobiP(np.array([rl]), 0, 0, i)
-        self.lagrange = np.linalg.solve(np.transpose(self.DG_vars.V), l)    
+        self.lagrange = np.linalg.solve(np.transpose(self.DG_vars.V), l)  
+
+  
 
 
     def density_to_pressure(self, rho):
@@ -369,6 +434,18 @@ class PipeflowEquations(BaseModel):
 
 
         return P, P_inv, A, S, S_inv, Lambda
+    
+    def start_solver(self):
+
+        brownian = Brownian()
+
+        window_size = 600
+        self.inflow_boundary_noise = brownian.gen_normal(n_step=np.int64(self.t_final/self.step_size + window_size + 1))
+        self.inflow_boundary_noise = moving_average(self.inflow_boundary_noise, n=window_size)
+        self.inflow_boundary_noise = np.abs(self.inflow_boundary_noise)
+
+
+        
 
     def BC_eqs(self, q, gas_mass_inflow, liquid_mass_inflow):
 
@@ -388,8 +465,9 @@ class PipeflowEquations(BaseModel):
     def boundary_conditions(self, t=0, q=None):
         """Compute the boundary conditions."""
 
-        inflow_noise = self.inflow_boundary_noise[len(self.t_vec)]*5
-        outflow_noise = self.outflow_boundary_noise[len(self.t_vec)]/500
+
+        inflow_noise = self.inflow_boundary_noise[len(self.t_vec)]*10
+
         
         t_start = 10000000.
         t_end = 200000000.
@@ -429,7 +507,7 @@ class PipeflowEquations(BaseModel):
             }
             BC_state_2 = {
                 'left': None,
-                'right': 1. + outflow_noise#self.p_outlet,
+                'right': 1. #+ outflow_noise#self.p_outlet,
             }
             BC_state_3 = {
                 'left': u_m,#,
@@ -558,9 +636,8 @@ class PipeflowEquations(BaseModel):
 
         
         point_source = np.zeros((self.DG_vars.Np*self.DG_vars.K))
-        if t>0.:
-            '''
-            x = pipe_DG.DG_vars.x.flatten('F')
+        if t>1000000.:
+            x = self.DG_vars.x.flatten('F')
             width = 50
             point_source = \
                 (np.heaviside(x-self.leak_location + width/2, 1) - np.heaviside(x-self.leak_location-width/2, 1))
@@ -573,6 +650,7 @@ class PipeflowEquations(BaseModel):
             leak = self.leakage(pressure=p, rho_m=rho_m).flatten('F')
             s[0] = -alpha_g * leak
             s[1] = -alpha_l * leak
+            '''
 
         s[-1] = -self.friction_factor(q)
 
@@ -580,13 +658,12 @@ class PipeflowEquations(BaseModel):
 
 if __name__ == '__main__':
 
-
     basic_args = {
         'xmin': 0,
-        'xmax': 10000,
-        'num_elements': 1000,
+        'xmax': 500,
+        'num_elements': 500,
         'num_states': 3,
-        'polynomial_order': 2,
+        'polynomial_order': 3,
         'polynomial_type': 'legendre',
     }
 
@@ -606,7 +683,7 @@ if __name__ == '__main__':
     '''
     stabilizer_args = {
         'type': 'artificial_viscosity',
-        'kappa': 15.,
+        'kappa': 5.,
     }
     '''
     stabilizer_args = {
@@ -622,7 +699,7 @@ if __name__ == '__main__':
     '''
     time_integrator_args = {
         'type': 'BDF2',
-        'step_size': .05,
+        'step_size': .01,
         'newton_params': {
             'solver': 'direct',
             'max_newton_iter': 100,
@@ -633,7 +710,7 @@ if __name__ == '__main__':
     BC_args = {
         'type': 'dirichlet',
         'treatment': 'naive',
-        'state_or_flux': {'left': 'flux', 'right': 'state'},
+        'state_or_flux': {'left': 'state', 'right': 'state'},
     }
 
     pipe_DG = PipeflowEquations(
@@ -647,13 +724,23 @@ if __name__ == '__main__':
             
     init = pipe_DG.initial_condition(pipe_DG.DG_vars.x.flatten('F'))
 
-    t_final = 2000.0
+    t_final = 250.0
     sol, t_vec = pipe_DG.solve(
         t=0, 
         q_init=init, 
         t_final=t_final, 
         steady_state_args=steady_state_args
     )
+
+
+    num_steps_to_plot = 5000
+    if sol.shape[-1] > num_steps_to_plot:
+
+        t_idx = np.linspace(0, sol.shape[-1]-1, num_steps_to_plot, dtype=int)
+
+        sol = sol[:, :, t_idx]
+
+    t_vec = np.arange(0, sol.shape[-1])
 
     x = np.linspace(0, basic_args['xmax'], 512)
 
@@ -676,11 +763,15 @@ if __name__ == '__main__':
     rho_l_A_l_u_m = u_m * pipe_DG.rho_l * A_l
     #print(rho_g_A_g_u_m[0, :])
 
+    plt.figure()
+    plt.plot(t_vec, rho_l_A_l_u_m[0, :])
+    plt.show()
+
     
     t_vec = np.arange(0, u.shape[1]-1)
 
     plt.figure()
-    plt.imshow(alpha_l, extent=[0, t_final, basic_args['xmax'], 0], aspect='auto')
+    plt.imshow(u, extent=[0, t_final, basic_args['xmax'], 0], aspect='auto')
     plt.colorbar()
     plt.show()
 
@@ -688,6 +779,7 @@ if __name__ == '__main__':
     #plt.plot(x, alpha_l[:, 0], label='alpha_l', linewidth=2)
     plt.plot(x, alpha_l[:, -1], label='alpha_l', linewidth=2)
     plt.plot(x, alpha_g[:, -1], label='alpha_g', linewidth=2)
+    plt.plot(x, u[:, -1], label='u', linewidth=2)
     #plt.ylim(0.1, 0.75)
     #plt.ylim(18, 35)
     plt.grid()
@@ -695,17 +787,6 @@ if __name__ == '__main__':
     plt.savefig('pipeflow.png')
     plt.show()
 
-    num_steps_to_plot = 1000
-    if alpha_l.shape[-1] > num_steps_to_plot:
-
-        t_idx = np.linspace(0, alpha_l.shape[-1]-1, num_steps_to_plot, dtype=int)
-
-        alpha_l = alpha_l[:, t_idx]
-        alpha_g = alpha_g[:, t_idx]
-        u = u[:, t_idx]
-        p = p[:, t_idx]
-
-    t_vec = np.arange(0, alpha_l.shape[-1])
 
 
  
@@ -736,7 +817,7 @@ if __name__ == '__main__':
     ani.save('pipeflow_velocity.gif', fps=30)
     plt.show()
 
-    '''
+
     fig, ax = plt.subplots()
     xdata, ydata, ydata_1 = [], [], []
     ln, = ax.plot([], [], lw=3, animated=True)
@@ -767,7 +848,7 @@ if __name__ == '__main__':
         )
     ani.save('pipeflow_pressure.gif', fps=30)
     plt.show()
-    '''
+    
 
 
     fig, ax = plt.subplots()

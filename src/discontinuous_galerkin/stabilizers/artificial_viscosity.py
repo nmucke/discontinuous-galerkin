@@ -61,13 +61,12 @@ class ArtificialViscosity(BaseStabilizer):
         for i in range(self.DG_vars.num_states):
             q_norm_diff[i, :] = ((q_diff[i, :].T  @ self.DG_vars.Mk) * q_diff[i, :].T).sum(axis=1)
 
-
         S_e = q_norm_diff/q_norm
         '''
         S_e = np.linalg.norm(q_diff, axis=1)/ np.linalg.norm(q, axis=1)
         '''
         S_e = np.max(S_e, axis=0)
-        s_e = np.log10(S_e)
+        s_e = np.log10(S_e + 1e-12)
 
         epsilon_e = np.zeros(self.DG_vars.K)
         indices = np.where(np.logical_and(self.s_0 - self.kappa <= s_e, s_e <= self.s_0 + self.kappa))
