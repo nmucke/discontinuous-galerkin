@@ -9,9 +9,6 @@ from scipy.sparse import csc_matrix
 from scipy.sparse.linalg import splu, spsolve
 
 
-from scipy.optimize import BroydenFirst, KrylovJacobian
-from scipy.optimize import InverseJacobian
-
 
 class NewtonSolver(object):
         """Newton solver for nonlinear problems."""    

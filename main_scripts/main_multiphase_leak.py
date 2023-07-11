@@ -104,7 +104,7 @@ class PipeflowEquations(BaseModel):
 
         self.D_orifice = 0.01
         self.A_orifice = np.pi*(self.D_orifice/2)**2
-        self.leak_location = 321.31
+        self.leak_location = 3221.31
         self.Cd = 1.
         self.Cv = self.A/np.sqrt(self.rho_g_norm/2 * ((self.A/(self.A_orifice*self.Cd))**2-1))
         print(f'Cv: {self.Cv:.2E}')
@@ -466,7 +466,7 @@ class PipeflowEquations(BaseModel):
         """Compute the boundary conditions."""
 
 
-        inflow_noise = self.inflow_boundary_noise[len(self.t_vec)]*10
+        inflow_noise = self.inflow_boundary_noise[len(self.t_vec)]*15
 
         
         t_start = 10000000.
@@ -479,9 +479,10 @@ class PipeflowEquations(BaseModel):
         elif t > t_end:
             gas_mass_inflow = 0.4
         else:
-            gas_mass_inflow = 0.2 #+ self.added_boundary_noise# * np.sin(2*np.pi*t/50)
+            gas_mass_inflow = 0.2 + inflow_noise#+ self.added_boundary_noise# * np.sin(2*np.pi*t/50)
 
-        liquid_mass_inflow = 20.0 + inflow_noise
+        gas_mass_inflow = 0.2# + inflow_noise
+        liquid_mass_inflow = 20.0# + inflow_noise
 
         if len(q.shape) == 1:
             rho_g = self.pressure_to_density(q[1]*self.p_outlet)
@@ -636,7 +637,7 @@ class PipeflowEquations(BaseModel):
 
         
         point_source = np.zeros((self.DG_vars.Np*self.DG_vars.K))
-        if t>1000000.:
+        if t>0.:
             x = self.DG_vars.x.flatten('F')
             width = 50
             point_source = \
@@ -660,10 +661,10 @@ if __name__ == '__main__':
 
     basic_args = {
         'xmin': 0,
-        'xmax': 500,
-        'num_elements': 500,
+        'xmax': 5000,
+        'num_elements': 1000,
         'num_states': 3,
-        'polynomial_order': 3,
+        'polynomial_order': 2,
         'polynomial_type': 'legendre',
     }
 
@@ -699,18 +700,18 @@ if __name__ == '__main__':
     '''
     time_integrator_args = {
         'type': 'BDF2',
-        'step_size': .01,
+        'step_size': .005,
         'newton_params': {
             'solver': 'direct',
             'max_newton_iter': 100,
             'newton_tol': 1e-8,
-            'num_jacobian_reuses': 1000,
+            'num_jacobian_reuses': 3000,
         }
     }
     BC_args = {
         'type': 'dirichlet',
         'treatment': 'naive',
-        'state_or_flux': {'left': 'state', 'right': 'state'},
+        'state_or_flux': {'left': 'flux', 'right': 'state'},
     }
 
     pipe_DG = PipeflowEquations(
@@ -724,7 +725,7 @@ if __name__ == '__main__':
             
     init = pipe_DG.initial_condition(pipe_DG.DG_vars.x.flatten('F'))
 
-    t_final = 250.0
+    t_final = 150.0
     sol, t_vec = pipe_DG.solve(
         t=0, 
         q_init=init, 
