@@ -23,9 +23,9 @@ class PipeflowEquations(BaseModel):
         self.rho_ref = 52.67
         self.p_amb = 101325.
         self.p_ref = self.rho_ref*self.c**2#5016390.
-        self.e = 1e-2
+        self.e = 1e-8
         self.mu = 1.2e-5
-        self.Cd = .1
+        self.Cd = 3.
 
         self.leak_location = 500
 
@@ -46,7 +46,7 @@ class PipeflowEquations(BaseModel):
 
         self.Cv = self.A/np.sqrt(self.rho_ref/2 * ((self.A/(self.A_orifice*self.Cd))**2-1))
 
-        print('Cv = ', self.Cv)
+        print(f'Cv = {self.Cv:.2e}')
 
     def density_to_pressure(self, rho):
         """Compute the pressure from the density."""
@@ -243,10 +243,10 @@ if __name__ == '__main__':
 
     basic_args = {
         'xmin': 0,
-        'xmax': 2000,
-        'num_elements': 200,
+        'xmax': 1000,
+        'num_elements': 100,
         'num_states': 2,
-        'polynomial_order': 4,
+        'polynomial_order': 3,
         'polynomial_type': 'legendre',
     }
 
@@ -283,8 +283,8 @@ if __name__ == '__main__':
     '''
 
     time_integrator_args = {
-        'type': 'BDF2',
-        'step_size': 0.01,
+        'type': 'implicit_euler',
+        'step_size': 0.05,
         'newton_params':{
             'solver': 'direct',
             'max_newton_iter': 200,
@@ -309,7 +309,7 @@ if __name__ == '__main__':
 
     init = pipe_DG.initial_condition(pipe_DG.DG_vars.x.flatten('F'))
 
-    t_final = 500.0
+    t_final = 120.0
     sol, t_vec = pipe_DG.solve(
         t=0, 
         q_init=init, 
@@ -317,10 +317,10 @@ if __name__ == '__main__':
         steady_state_args=steady_state
     )
 
-    x = np.linspace(0, 2000, 256)
+    x = np.linspace(0, 1000, 256)
 
 
-    num_steps_to_plot = 3000
+    num_steps_to_plot = 1000
     if sol.shape[-1] > num_steps_to_plot:
 
         t_idx = np.linspace(0, sol.shape[-1]-1, num_steps_to_plot, dtype=int)
@@ -340,7 +340,7 @@ if __name__ == '__main__':
 
 
     plt.figure()
-    plt.imshow(u, extent=[0, t_final, 2000, 0], aspect='auto')
+    plt.imshow(u, extent=[0, t_final, 1000, 0], aspect='auto')
     plt.colorbar()
     plt.show()
 
@@ -357,8 +357,8 @@ if __name__ == '__main__':
     ln, = ax.plot([], [], lw=3, animated=True)
 
     def init():
-        ax.set_xlim(0, 2000)
-        ax.set_ylim(u.min(), u.max())
+        ax.set_xlim(0, 1000)
+        ax.set_ylim(1., 5.)
         return ln,
 
     def update(frame):
@@ -375,5 +375,5 @@ if __name__ == '__main__':
         blit=True,
         interval=10,
         )
-    ani.save('pipeflow.gif', fps=30)
+    ani.save('pipeflow.gif', fps=10)
     plt.show()

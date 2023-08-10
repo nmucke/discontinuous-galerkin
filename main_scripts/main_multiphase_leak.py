@@ -90,23 +90,20 @@ class PipeflowEquations(BaseModel):
         self.p_amb = 1.01325e5 # Pa
         self.p_norm = 1.0e5 # Pa
         self.p_outlet = 1.0e6 # Pa
-        self.e = 1e-2#1e-8 # meters
+        self.e = 1e-8 # meters
         self.mu_g = 1.8e-5 # Pa*s
         self.mu_l = 1.516e-3 # Pa*s
         #self.Cd = 5e-4
         self.T_norm = 278 # Kelvin
         self.T = 278 # Kelvin
 
-        self.rho_l = 1000. # kg/m^3
-
         self.leak = True
 
-
-        self.D_orifice = 0.01
+        self.D_orifice = 0.03 # meters
         self.A_orifice = np.pi*(self.D_orifice/2)**2
         self.leak_location = 3221.31
-        self.Cd = 1.
-        self.Cv = self.A/np.sqrt(self.rho_g_norm/2 * ((self.A/(self.A_orifice*self.Cd))**2-1))
+        self.Cd = 2.
+        self.Cv = self.A/np.sqrt(self.rho_g_norm/2 * ((self.A/(self.A_orifice*self.Cd))**2-1)) #
         print(f'Cv: {self.Cv:.2E}')
 
         self.conservative_or_primitive = 'primitive'
@@ -121,10 +118,7 @@ class PipeflowEquations(BaseModel):
         rl = 2 * (self.leak_location - self.DG_vars.VX[self.xElementL]) / self.DG_vars.deltax - 1
         for i in range(0, self.DG_vars.N + 1):
             l[i] = JacobiP(np.array([rl]), 0, 0, i)
-        self.lagrange = np.linalg.solve(np.transpose(self.DG_vars.V), l)  
-
-  
-
+        self.lagrange = np.linalg.solve(np.transpose(self.DG_vars.V), l)
 
     def density_to_pressure(self, rho):
         """Compute the pressure from the density."""
@@ -609,10 +603,14 @@ class PipeflowEquations(BaseModel):
     def leakage(self, pressure=0, rho_m=0):
         """Compute leakage"""
 
+
         f_l = np.zeros((self.DG_vars.x.shape))
 
         pressureL = self.evaluate_solution(np.array([self.leak_location]), pressure)[0]
         rhoL = self.evaluate_solution(np.array([self.leak_location]), rho_m)[0]
+
+
+        self.Cv = self.A/np.sqrt(rhoL/2 * ((self.A/(self.A_orifice*self.Cd))**2-1)) #
 
         discharge_sqrt_coef = (pressureL - self.p_amb) * rhoL
         f_l[:, self.xElementL] = self.Cv * np.sqrt(discharge_sqrt_coef) * self.lagrange
@@ -638,6 +636,7 @@ class PipeflowEquations(BaseModel):
         
         point_source = np.zeros((self.DG_vars.Np*self.DG_vars.K))
         if t>0.:
+            '''
             x = self.DG_vars.x.flatten('F')
             width = 50
             point_source = \
@@ -651,7 +650,6 @@ class PipeflowEquations(BaseModel):
             leak = self.leakage(pressure=p, rho_m=rho_m).flatten('F')
             s[0] = -alpha_g * leak
             s[1] = -alpha_l * leak
-            '''
 
         s[-1] = -self.friction_factor(q)
 
@@ -662,7 +660,7 @@ if __name__ == '__main__':
     basic_args = {
         'xmin': 0,
         'xmax': 5000,
-        'num_elements': 1000,
+        'num_elements': 500,
         'num_states': 3,
         'polynomial_order': 2,
         'polynomial_type': 'legendre',
@@ -672,7 +670,7 @@ if __name__ == '__main__':
         'newton_params': {
             'solver': 'direct',
             'max_newton_iter': 200,
-            'newton_tol': 1e-8,
+            'newton_tol': 1e-5,
             'num_jacobian_reuses': 1000,
         }
     }
@@ -700,12 +698,12 @@ if __name__ == '__main__':
     '''
     time_integrator_args = {
         'type': 'BDF2',
-        'step_size': .005,
+        'step_size': .01,
         'newton_params': {
             'solver': 'direct',
             'max_newton_iter': 100,
-            'newton_tol': 1e-8,
-            'num_jacobian_reuses': 3000,
+            'newton_tol': 1e-5,
+            'num_jacobian_reuses': 2500,
         }
     }
     BC_args = {
@@ -725,7 +723,7 @@ if __name__ == '__main__':
             
     init = pipe_DG.initial_condition(pipe_DG.DG_vars.x.flatten('F'))
 
-    t_final = 150.0
+    t_final = 180.0
     sol, t_vec = pipe_DG.solve(
         t=0, 
         q_init=init, 
@@ -734,7 +732,7 @@ if __name__ == '__main__':
     )
 
 
-    num_steps_to_plot = 5000
+    num_steps_to_plot = 500
     if sol.shape[-1] > num_steps_to_plot:
 
         t_idx = np.linspace(0, sol.shape[-1]-1, num_steps_to_plot, dtype=int)
@@ -859,7 +857,7 @@ if __name__ == '__main__':
 
     def init():
         ax.set_xlim(0, basic_args['xmax'])
-        ax.set_ylim(0.1, 0.9)
+        ax.set_ylim(0.0, 1.0)
         #ax.set_ylim(0.1, 0.9)
         #ax.set_ylim(18, 35)
         return ln,
